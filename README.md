@@ -1,12 +1,14 @@
 # La Pizarra
 
+**App:** <https://alejandromartinherrer.github.io/la-pizarra/> · **Código:** <https://github.com/alejandromartinherrer/la-pizarra>
+
 La pizarra de la cuadrilla de CrossFit: tiempos, entrenos, cronómetro, los 249 Hero WODs y las 30 Girls de crossfit.com, y una clasificación por puntos. Un solo archivo `index.html`, sin instalación: se abre en el móvil como una web y se puede añadir a la pantalla de inicio.
 
 ## Publicar en GitHub Pages (5 minutos)
 
 1. Crea un repositorio en GitHub (por ejemplo `la-pizarra`) y sube `index.html` a la raíz.
 2. En el repositorio: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: main / (root) → Save**.
-3. En un minuto la app queda en `https://TU-USUARIO.github.io/la-pizarra/`. Comparte ese enlace con la cuadrilla.
+3. En un minuto la app queda en <https://alejandromartinherrer.github.io/la-pizarra/>. Comparte ese enlace con la cuadrilla (ya está hecho para este repositorio).
 
 ## Compartir los datos entre todos (Firebase, gratis)
 
