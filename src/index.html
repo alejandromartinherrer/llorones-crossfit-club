@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131512">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="La Pizarra">
+<meta name="description" content="La pizarra de tiempos, entrenos y clasificación de la cuadrilla de CrossFit">
+<title>La Pizarra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="wordmark">La <em>Pizarra</em></span>
+      <span class="crew" id="brand-crew">Cuadrilla</span>
+    </div>
+    <button class="me-chip" id="me-chip" data-action="pick-athlete" aria-label="Cambiar de atleta"></button>
+  </header>
+  <main id="main"></main>
+  <nav class="tabbar" id="tabbar" aria-label="Secciones">
+    <button class="tab" data-view="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Hoy</button>
+    <button class="tab" data-view="wods"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 5v14M3 8v8M21 8v8M6 12h12"/></svg>Entrenos</button>
+    <button class="tab" data-view="timer"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6M12 2v3"/></svg>Crono</button>
+    <button class="tab" data-view="ranking"><svg viewBox="0 0 24 24"><path d="M8 21V10M12 21V4M16 21v-7M4 21h16"/></svg>Ranking</button>
+    <button class="tab" data-view="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Perfil</button>
+  </nav>
+</div>
+<div id="sheet-root"></div>
+<div id="toast-root"></div>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>
