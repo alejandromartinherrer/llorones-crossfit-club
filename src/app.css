@@ -113,6 +113,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
+  touch-action: manipulation;      /* sin zoom por doble toque; el pellizco sigue funcionando */
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
@@ -131,7 +132,7 @@ body::before {
   background-size: 6px 6px;
   z-index: 0;
 }
-button, input, select, textarea { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; touch-action: manipulation; }
 button { cursor: pointer; }
 a { color: var(--accent-strong); }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; text-wrap: balance; }
@@ -671,6 +672,54 @@ details[open] > summary::after { content: "–"; }
 .stepper { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; align-items: center; }
 .stepper button { min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); font-family: var(--font-display); font-size: 24px; }
 .stepper input { text-align: center; font-family: var(--font-cond); font-size: 22px; font-weight: 600; }
+
+/* ---------- cronómetro a pantalla completa ---------- */
+.crono-capa {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+.crono-giro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+/* Con el móvil en vertical se gira todo sobre el centro de la pantalla, para
+   verlo grande al ponerlo de lado. */
+@media (orientation: portrait) {
+  .crono-giro {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    width: 100vh;
+    width: 100dvh;
+    height: 100vw;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+}
+.crono-capa .timer-stage { flex: 1; border-radius: var(--radius); position: relative; }
+.crono-capa .timer-stage .clock { font-size: min(46vw, 34vh); }
+@media (orientation: portrait) {
+  .crono-capa .timer-stage .clock { font-size: min(46vh, 34vw); }
+}
+.crono-capa .timer-stage .clock.small { font-size: min(34vw, 26vh); }
+.crono-capa .round-counter, .crono-capa .timer-controls { margin: 0; }
+.crono-capa .timer-controls .btn.big { min-height: 54px; }
+.crono-salir {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 40px; height: 40px;
+  border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--muted);
+  display: grid; place-items: center;
+}
+.crono-salir svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 
 /* ---------- perfil ---------- */
 .profile-head { display: flex; align-items: center; gap: 14px; }

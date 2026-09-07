@@ -157,16 +157,37 @@ function b64ToUtf8(str) { return decodeURIComponent(escape(atob(String(str).repl
 /* SYNC-CORE-END */
 
 /* GH-STORE-START */
+/* GitHub devuelve la caducidad del código en una cabecera de cada respuesta:
+   "2027-09-05 09:00:00 UTC". Se guarda para poder avisar antes de tiempo. */
+function parseCaducidad(s) {
+  if (!s) return null;
+  const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+}
+function diasHasta(ms) { return ms == null ? null : Math.ceil((ms - Date.now()) / 86400000); }
 class GitHubStore {
   constructor(local, cfg) {
     this.mode = 'github'; this.local = local; this.cfg = cfg;
     this.token = localStorage.getItem(LS_PREFIX + 'gh_token') || '';
+    this.caduca = Number(localStorage.getItem(LS_PREFIX + 'gh_exp')) || null;
     this.sync = { lastPull: 0, lastPush: 0, pending: localStorage.getItem(LS_PREFIX + 'pending') === '1', error: '', fatal: false, busy: false };
     this.listeners = []; this.timer = 0; this.again = false; this.poll = 0;
   }
   onStatus(cb) { this.listeners.push(cb); }
   _notify() { this.listeners.forEach((cb) => { try { cb(this.status()); } catch (e) { } }); }
-  status() { return { readOnly: !this.token || this.sync.fatal, badToken: this.sync.fatal, pending: this.sync.pending, error: this.sync.error, busy: this.sync.busy, lastPull: this.sync.lastPull, lastPush: this.sync.lastPush }; }
+  status() {
+    return {
+      readOnly: !this.token || this.sync.fatal, badToken: this.sync.fatal,
+      pending: this.sync.pending, error: this.sync.error, busy: this.sync.busy,
+      lastPull: this.sync.lastPull, lastPush: this.sync.lastPush,
+      caduca: this.caduca, diasParaCaducar: this.token && !this.sync.fatal ? diasHasta(this.caduca) : null,
+    };
+  }
+  _anotaCaducidad(r) {
+    const exp = parseCaducidad(r && r.headers && r.headers.get && r.headers.get('github-authentication-token-expiration'));
+    if (exp) { this.caduca = exp; localStorage.setItem(LS_PREFIX + 'gh_exp', String(exp)); }
+  }
   subscribe(col, cb) { return this.local.subscribe(col, cb); }
   async set(col, id, data) { await this.local.set(col, id, data); this._dirty(); }
   async update(col, id, patch) { await this.local.update(col, id, patch); this._dirty(); }
@@ -189,6 +210,7 @@ class GitHubStore {
         this.sync.fatal = true;
       } else if (r.ok) {
         this.sync.fatal = false;
+        this._anotaCaducidad(r);
         const j = await r.json();
         /* Por encima de 1 MB la API no devuelve el contenido: se pide en bruto. */
         let doc;
@@ -273,11 +295,13 @@ class GitHubStore {
     } catch (e) { return { ok: false, motivo: 'Sin conexión: inténtalo otra vez.' }; }
     if (r.status === 401 || r.status === 403) return { ok: false, motivo: 'Ese código no vale para este club (o ha caducado). Pide uno nuevo.' };
     if (!r.ok && r.status !== 404) return { ok: false, motivo: 'GitHub respondió ' + r.status + '. Inténtalo otra vez.' };
-    return { ok: true };
+    this._anotaCaducidad(r);
+    return { ok: true, caduca: this.caduca };
   }
   setToken(t) {
     this.token = (t || '').trim();
-    if (this.token) localStorage.setItem(LS_PREFIX + 'gh_token', this.token); else localStorage.removeItem(LS_PREFIX + 'gh_token');
+    if (this.token) localStorage.setItem(LS_PREFIX + 'gh_token', this.token);
+    else { localStorage.removeItem(LS_PREFIX + 'gh_token'); localStorage.removeItem(LS_PREFIX + 'gh_exp'); this.caduca = null; }
     this.sync.error = ''; this.sync.fatal = false; this._notify();
     this._startPoll();
     this.pull();
@@ -299,6 +323,11 @@ async function chooseStore() {
   const local = new LocalStore();
   if (GITHUB_SYNC && GITHUB_SYNC.repo) return new GitHubStore(local, GITHUB_SYNC);
   return local;
+}
+function fmtDateFull(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  return d.getDate() + ' de ' + MESES_LARGO[d.getMonth()] + ' de ' + d.getFullYear();
 }
 function fmtAgo(ts) {
   if (!ts) return 'nunca';
@@ -576,7 +605,8 @@ function modeBanner() {
   if (!st) return '';
   if (st.mode === 'local') return '<div class="banner"><span class="dot"></span><span><b>Modo local:</b> los datos solo se guardan en este dispositivo.</span></div>';
   const y = st.status();
-  if (y.badToken) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>El código de acceso ya no vale:</b> sigues viendo las marcas de todos, pero las tuyas no se comparten. Toca aquí para pegar uno nuevo.</span></button>';
+  if (y.badToken) return '<button class="banner bad" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>El código de acceso ha caducado o ya no vale.</b> Los códigos duran como mucho un año: hay que crear uno nuevo en GitHub y repartirlo. Mientras tanto sigues viendo las marcas de todos, pero las tuyas no se comparten. Toca aquí.</span></button>';
+  if (y.diasParaCaducar != null && y.diasParaCaducar <= 21) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>El código de acceso caduca ' + esc(y.diasParaCaducar <= 0 ? 'hoy' : y.diasParaCaducar === 1 ? 'mañana' : 'en ' + y.diasParaCaducar + ' días') + '</b> (' + esc(fmtDateFull(y.caduca)) + '). Cread uno nuevo en GitHub y repartidlo antes de que pase. Toca aquí.</span></button>';
   if (y.readOnly) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>Solo lectura:</b> ves las marcas de todos, pero las tuyas no se comparten. Toca aquí para pegar el código de acceso.</span></button>';
   if (y.error) return '<div class="banner"><span class="dot"></span><span><b>Sin conexión con la nube:</b> ' + esc(y.error) + '. Tus marcas se guardan aquí y se subirán solas.</span></div>';
   return '';
@@ -780,6 +810,7 @@ function viewProfile() {
       html += '<div class="banner live"><span class="dot"></span><span>Conectado: todos veis las mismas marcas.</span></div>' +
         '<div class="kv"><span class="muted">Última descarga</span><b>' + esc(fmtAgo(y.lastPull)) + '</b></div>' +
         '<div class="kv"><span class="muted">Última subida</span><b>' + esc(y.pending ? (y.busy ? 'subiendo…' : 'pendiente') : fmtAgo(y.lastPush)) + '</b></div>' +
+        (y.caduca ? '<div class="kv"><span class="muted">El código caduca</span><b>' + esc(fmtDateFull(y.caduca)) + (y.diasParaCaducar != null && y.diasParaCaducar <= 60 ? ' (' + (y.diasParaCaducar <= 0 ? 'ya' : 'en ' + y.diasParaCaducar + ' días') + ')' : '') + '</b></div>' : '') +
         (y.error ? '<p class="form-error">' + esc(y.error) + '</p>' : '') +
         '<div class="btn-row"><button class="btn" data-action="gh-sync">Sincronizar ahora</button><button class="btn ghost" data-action="gh-forget">Quitar código</button></div>';
     }
@@ -803,7 +834,7 @@ const timer = {
   t0: 0, acc: 0, prepAcc: 0,
   rounds: 0, laps: [], workoutId: null,
   lastSec: -1, lastPhase: '', iv: 0, endReason: '', finalSec: 0,
-  wake: null,
+  wake: null, full: true,
 };
 let actx = null;
 function beep(freq, dur, vol) {
@@ -822,6 +853,25 @@ function beep(freq, dur, vol) {
 const beepShort = () => beep(880, 0.12);
 const beepLong = () => beep(660, 0.55, 0.3);
 const beepRest = () => beep(440, 0.3);
+/* Pantalla completa apaisada mientras corre el crono. En Android se pide de
+   verdad al sistema; en iPhone no se puede, así que el CSS gira la pantalla y
+   se ve igual de grande al poner el móvil de lado. */
+async function pantallaCompleta(on) {
+  try {
+    if (on) {
+      const el = document.documentElement;
+      if (el.requestFullscreen && !document.fullscreenElement) await el.requestFullscreen({ navigationUI: 'hide' });
+      else if (el.webkitRequestFullscreen && !document.webkitFullscreenElement) el.webkitRequestFullscreen();
+    } else {
+      if (document.exitFullscreen && document.fullscreenElement) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen && document.webkitFullscreenElement) document.webkitExitFullscreen();
+    }
+  } catch (e) { }
+  try {
+    if (on && screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+    else if (!on && screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+  } catch (e) { }
+}
 async function wakeLock(on) {
   try {
     if (on && navigator.wakeLock && !timer.wake) timer.wake = await navigator.wakeLock.request('screen');
@@ -829,6 +879,7 @@ async function wakeLock(on) {
   } catch (e) { timer.wake = null; }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && (timer.status === 'running' || timer.status === 'prep')) wakeLock(true); });
+timer.full = localStorage.getItem(LS_PREFIX + 'full') !== 'off';
 
 function timerTotal() {
   const c = timer.cfg;
@@ -853,6 +904,7 @@ function timerStart() {
   timer.t0 = performance.now();
   timer.status = timer.cfg.prepSec > 0 ? 'prep' : 'running';
   wakeLock(true);
+  if (timer.full) pantallaCompleta(true);
   clearInterval(timer.iv); timer.iv = setInterval(timerTick, 100);
   render(); timerTick();
 }
@@ -863,10 +915,10 @@ function timerFinish(reason) {
   if (timer.status === 'idle' || timer.status === 'done') return;
   timer.finalSec = timer.status === 'prep' ? 0 : elapsed();
   timer.acc = timer.finalSec; timer.status = 'done'; timer.endReason = reason || 'manual';
-  clearInterval(timer.iv); wakeLock(false); beepLong(); setTimeout(beepLong, 350);
+  clearInterval(timer.iv); wakeLock(false); pantallaCompleta(false); beepLong(); setTimeout(beepLong, 350);
   render();
 }
-function timerReset() { clearInterval(timer.iv); timer.status = 'idle'; timer.acc = 0; timer.rounds = 0; timer.laps = []; wakeLock(false); render(); }
+function timerReset() { clearInterval(timer.iv); timer.status = 'idle'; timer.acc = 0; timer.rounds = 0; timer.laps = []; wakeLock(false); pantallaCompleta(false); render(); }
 function timerRound() {
   if (timer.status !== 'running' && timer.status !== 'paused') return;
   timer.rounds++; timer.laps.push(elapsed());
@@ -946,6 +998,7 @@ function viewTimer() {
   if (s === 'idle') {
     html += '<div class="timer-config">' +
       (w ? '<div class="banner live" style="justify-content:space-between"><span><b>' + esc(w.name) + '</b> · ' + esc(workoutMeta(w).join(' · ')) + '</span><button class="icon-btn" data-action="timer-detach" aria-label="Quitar entreno">' + icon('x') + '</button></div>' : '') +
+      '<label class="check"><input type="checkbox" data-action="toggle-full"' + (timer.full ? ' checked' : '') + '> Pantalla completa en horizontal al empezar</label>' +
       '<div class="segmented" role="tablist">' + ['fortime', 'amrap', 'emom', 'tabata'].map((m) => '<button data-action="timer-mode" data-mode="' + m + '" aria-pressed="' + (timer.mode === m) + '">' + TYPE_LABEL[m] + '</button>').join('') + '</div>' +
       '<div class="inline-fields">' +
       (timer.mode === 'fortime' ? stepper('capMin', 'Time cap (min)', c.capMin, 0, 180, 1, '0 = sin cap') : '') +
@@ -957,7 +1010,11 @@ function viewTimer() {
     html += '<div class="timer-stage" id="tstage"><span class="state" id="tstate">' + esc(timerModeLabel()) + '</span><span class="clock" id="clock">' + (timer.mode === 'fortime' ? '0:00' : fmtTime(timerTotal())) + '</span><span class="sub" id="tsub">' + (w ? '' : 'Listo') + '</span>' + (w ? '<span class="wod-name">' + esc(w.name) + '</span>' : '') + '</div>';
     html += '<div class="timer-controls"><button class="btn primary big full" data-action="timer-start">' + icon('play') + 'Empezar</button></div>';
   } else {
-    html += '<div class="timer-stage" id="tstage"><span class="state" id="tstate"></span><span class="clock" id="clock">' + (s === 'done' ? fmtTime(timer.finalSec) : '') + '</span><span class="sub" id="tsub"></span>' + (w ? '<span class="wod-name">' + esc(w.name) + '</span>' : '') + '</div>';
+    const enMarcha = (s === 'prep' || s === 'running' || s === 'paused');
+    const capa = enMarcha && timer.full;
+    if (capa) html += '<div class="crono-capa"><div class="crono-giro">';
+    html += '<div class="timer-stage" id="tstage"><span class="state" id="tstate"></span><span class="clock" id="clock">' + (s === 'done' ? fmtTime(timer.finalSec) : '') + '</span><span class="sub" id="tsub"></span>' + (w ? '<span class="wod-name">' + esc(w.name) + '</span>' : '') +
+      (capa ? '<button class="crono-salir" data-action="timer-ventana" aria-label="Salir de pantalla completa">' + icon('x') + '</button>' : '') + '</div>';
     if (s === 'prep') {
       html += '<div class="timer-controls"><button class="btn big" data-action="timer-skip">Saltar cuenta atrás</button><button class="btn ghost big" data-action="timer-reset">Cancelar</button></div>';
     } else if (s === 'running' || s === 'paused') {
@@ -971,6 +1028,7 @@ function viewTimer() {
       html += '<div class="card" style="text-align:center"><span class="eyebrow">' + esc(endText) + '</span><div class="h-display h1">' + esc(timer.mode === 'amrap' ? timer.rounds + ' rd' : fmtTime(timer.finalSec)) + '</div><span class="muted">' + esc(summary) + (timer.mode === 'amrap' && timer.endReason !== 'time' ? ' · parado a los ' + fmtTime(timer.finalSec) : '') + '</span>' + (timer.laps.length ? '<div class="laps" style="justify-content:center">' + lapsHtml() + '</div>' : '') + '</div>';
       html += '<div class="timer-controls"><button class="btn primary big" data-action="timer-save">Apuntar resultado</button><button class="btn ghost big" data-action="timer-reset">Reiniciar</button></div>';
     }
+    if (capa) html += '</div></div>';       // cierra la capa apaisada
   }
   return html + '</div>';
 }
@@ -1147,7 +1205,13 @@ function openPickAthlete() {
   openSheet({ title: '¿Quién eres?', body, focus: false, foot: '<button class="btn" data-action="new-athlete">+ Soy nuevo</button>' });
 }
 function openTokenSheet() {
-  const body = '<p class="small muted">El código de acceso es un token de GitHub que permite escribir en el repositorio del club. Pídeselo a quien administra el club y pégalo aquí: se guarda solo en este dispositivo y nunca sale en las copias exportadas.</p>' +
+  const y = state.store.status ? state.store.status() : {};
+  const aviso = y.badToken
+    ? '<div class="banner bad"><span class="dot"></span><span>El código que tenías ha caducado o ya no vale. Hace falta uno nuevo.</span></div>'
+    : (y.diasParaCaducar != null && y.diasParaCaducar <= 21 ? '<div class="banner"><span class="dot"></span><span>El código actual caduca el ' + esc(fmtDateFull(y.caduca)) + '.</span></div>' : '');
+  const body = aviso +
+    '<p class="small muted">El código de acceso es un token de GitHub que permite escribir en el repositorio del club. Pídeselo a quien administra el club y pégalo aquí: se guarda solo en este dispositivo y nunca sale en las copias exportadas.</p>' +
+    '<p class="small muted">Quien administra el club lo crea en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Fine-grained tokens</a>: acceso solo a este repositorio y permiso <b>Contents: Read and write</b>.</p>' +
     '<div class="field"><label for="gh-tok">Código de acceso</label><input type="text" id="gh-tok" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false"></div><p class="form-error" id="gh-error"></p>';
   openSheet({ title: 'Código de acceso', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="gh-save-token">Conectar</button>' });
 }
@@ -1254,6 +1318,7 @@ const ACTIONS = {
   'timer-resume': () => timerResume(),
   'timer-finish': () => timerFinish('manual'),
   'timer-reset': () => timerReset(),
+  'timer-ventana': () => { timer.full = false; pantallaCompleta(false); render(); },
   'timer-round': () => timerRound(),
   'timer-save': () => {
     const w = timer.workoutId ? getWorkout(timer.workoutId) : null;
@@ -1277,6 +1342,7 @@ const ACTIONS = {
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
   'export': () => exportData(),
   'import': () => importData(),
+  'toggle-full': (el) => { timer.full = el.checked; localStorage.setItem(LS_PREFIX + 'full', timer.full ? 'on' : 'off'); },
   'toggle-sound': (el) => { state.sound = el.checked; localStorage.setItem(LS_PREFIX + 'sound', state.sound ? 'on' : 'off'); if (state.sound) beepShort(); },
 };
 function onAction(e) {

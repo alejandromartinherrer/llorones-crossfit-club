@@ -144,7 +144,7 @@ async function vaciarNube() {
   const crono = await carlos.text();
   check(/AMRAP 15/.test(crono), 'el crono se abre configurado como AMRAP 15’');
   for (let i = 0; i < 7; i++) await carlos.clickSel('[data-action="step"][data-id="prepSec"][data-d="-1"]');
-  await carlos.click('Empezar'); await sleep(6500);
+  await carlos.clickSel('[data-action="timer-start"]'); await sleep(6500);
   await carlos.shot(path.join(SHOTS, 'c-crono-corriendo.png'));
   const enMarcha = await carlos.text();
   check(/AMRAP 15/.test(enMarcha) && /14:5|14:4/.test(enMarcha), 'el crono descuenta (' + (enMarcha.match(/1[0-9]:[0-9]{2}/) || ['?'])[0] + ')');

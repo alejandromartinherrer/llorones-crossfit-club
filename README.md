@@ -14,6 +14,7 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 - Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
 - Si el código caduca o se pega mal, la app **sigue enseñando las marcas de todos** (la lectura es pública) y avisa de que las tuyas no se están compartiendo.
 - Detalle: quien entra **sin código** puede ver la pizarra hasta unos minutos desfasada si la lectura pública cae en la copia en caché de GitHub. Con código va siempre al día.
+- **Aviso de caducidad**: la app sabe cuándo caduca el código (GitHub lo dice en cada respuesta) y avisa en la pantalla Hoy las tres últimas semanas. Cuando ya ha caducado, lo dice claramente y explica que hay que crear uno nuevo y repartirlo. En **Perfil → Nube** se ve siempre la fecha.
 
 ### Crear el código de acceso (lo hace quien administra el club, una vez)
 
@@ -50,6 +51,8 @@ Cuenta la mejor marca de cada atleta en cada entreno; Rx siempre queda por delan
 
 For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
 
+Al darle a **Empezar** se pone a **pantalla completa en horizontal**, con el reloj a tamaño de pizarra de box y los botones de ronda, pausa y terminar a mano. En Android se pide la pantalla completa al sistema y se bloquea la orientación; en iPhone eso no se puede, así que la app gira el contenido y basta con poner el móvil de lado. La X de la esquina vuelve a la vista normal sin parar el crono, y el ajuste se puede desactivar en la propia pantalla del cronómetro.
+
 ## Datos
 
 - Los Hero WODs vienen del PDF oficial de CrossFit (`crossfit.com/heroes`, edición 20260520) y de sus fichas en `crossfit.com/benchmark/…`; cada uno incluye prescripción, cargas ♀/♂ (en lb y kg), fecha de publicación y a quién honra.
@@ -64,6 +67,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `data/heroes.json`, `data/girls.json` | Catálogo incrustado en el build |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
 | `test/live5.js` | Prueba en vivo: cinco móviles (Chrome sin ventana) usan la app y publican en la nube |
+| `test/crono.test.js` | Zoom por doble toque, cronómetro a pantalla completa y avisos de caducidad |
 | `test/drive.js`, `test/shots.js` | Utilidades de esa prueba y generador de capturas |
 
 ```bash
