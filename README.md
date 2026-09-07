@@ -22,7 +22,7 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 3. **Resource owner**: deja tu propia cuenta (`alejandromartinherrer`). Si eliges una organización, el repositorio del club no aparecerá en la lista.
 4. **Expiration**: elige **Custom** y pon una fecha; el máximo con fecha son 366 días. GitHub también ofrece **No expiration**, pero no la uses: que caduque es parte de la seguridad de este montaje.
 5. **Repository access**: marca **Only select repositories** y, en el desplegable **Select repositories** que aparece debajo, busca y marca `llorones-crossfit-club`.
-6. **Permissions → Repository permissions**: busca **Contents** y ponlo en **Read and write**. No hace falta nada más; GitHub añade solo **Metadata: Read-only**, que aparece marcado y no se puede quitar.
+6. **Permissions**, pestaña **Repositories**: pulsa **+ Add permissions**, busca **Contents** en el buscador que se abre y selecciónalo; después, en la fila que aparece, pon el acceso en **Read and write**. GitHub añade solo **Metadata: Read-only** (no se puede quitar), así que el contador quedará en **Repositories 2**. La pestaña **Account** se queda en 0.
 7. Pulsa **Generate token**. El código (empieza por `github_pat_`) **solo se muestra una vez**: cópialo en ese momento y pásaselo a la cuadrilla. Si cierras la página sin copiarlo, no se puede recuperar y hay que generar otro.
 
 Cada uno lo pega en **Perfil → Nube → Pegar código de acceso**. La app lo comprueba contra GitHub antes de guardarlo: si está mal o ha caducado te lo dice y conserva el que tuvieras.
