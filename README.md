@@ -13,6 +13,7 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 - Cada cambio se sube a los pocos segundos; la app se descarga la copia de la nube al abrirse, al volver a primer plano, al recuperar conexión y cada minuto. Si dos personas apuntan a la vez no se pierde nada: las copias se **fusionan por id** (gana la modificación más reciente; los borrados también se propagan).
 - Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
 - Si el código caduca o se pega mal, la app **sigue enseñando las marcas de todos** (la lectura es pública) y avisa de que las tuyas no se están compartiendo.
+- Detalle: quien entra **sin código** puede ver la pizarra hasta unos minutos desfasada si la lectura pública cae en la copia en caché de GitHub. Con código va siempre al día.
 
 ### Crear el código de acceso (lo hace quien administra el club, una vez)
 
