@@ -1,28 +1,21 @@
 /* ============================================================
-   La Pizarra — la app de la cuadrilla de CrossFit
+   Llorones Crossfit Club — la app de la cuadrilla
    Un solo archivo. Sin dependencias. Funciona en GitHub Pages.
    ============================================================ */
 'use strict';
 
 /* ------------------------------------------------------------
-   CONFIGURACIÓN DE SINCRONIZACIÓN COMPARTIDA
-   Para que todos los amigos vean los mismos datos, crea un
-   proyecto gratuito en Firebase con "Realtime Database" y pega
-   aquí la configuración (ver README). Si se deja en null, la app
-   funciona en modo local: los datos solo viven en cada móvil.
+   NUBE: los datos de todos se guardan en data/sync.json, en la
+   rama `data` de este mismo repositorio (igual que la app de
+   nutrición). Leer es público; para escribir hace falta pegar en
+   Perfil → Nube un código de acceso (token fine-grained de GitHub
+   con permiso Contents: Read and write solo sobre este repo).
+   Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
-const FIREBASE_CONFIG = null;
-/* Ejemplo:
-const FIREBASE_CONFIG = {
-  apiKey: "AIza....",
-  authDomain: "la-pizarra-1234.firebaseapp.com",
-  databaseURL: "https://la-pizarra-1234-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "la-pizarra-1234",
-  groupKey: "cuadrilla-2026"   // cualquier palabra: separa los datos de vuestro grupo
-};
-*/
-const APP_VERSION = '1.0.0';
-const CREW_NAME = 'Cuadrilla';
+const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
+const APP_VERSION = '1.1.0';
+const APP_NAME = 'Llorones Crossfit Club';
+const CREW_NAME = 'Crossfit Club';
 
 /* Datos incrustados en el build */
 const HEROES = /*__HEROES__*/[];
@@ -93,98 +86,186 @@ const COLOR_LABEL = { red: 'Disco rojo · 25 kg', blue: 'Disco azul · 20 kg', y
 function stripUndefined(o) { const r = {}; for (const k in o) if (o[k] !== undefined) r[k] = o[k]; return r; }
 
 /* ============================================================
-   Almacenamiento: tres adaptadores con la misma interfaz
+   Almacenamiento
+   LocalStore: caché en localStorage (con bajas registradas).
+   GitHubStore: la misma caché + sincronización con data/sync.json
+   en la rama `data` del repositorio. Interfaz común:
    subscribe(col, cb) · set(col,id,data) · update(col,id,patch) · remove(col,id)
    ============================================================ */
 const COLS = ['athletes', 'workouts', 'results'];
-const LS_PREFIX = 'pizarra:';
+const LS_PREFIX = 'llorones:';
 
 class LocalStore {
   constructor() {
     this.mode = 'local';
     this.subs = {};
     window.addEventListener('storage', (e) => {
-      if (e.key && e.key.indexOf(LS_PREFIX) === 0) this._emit(e.key.slice(LS_PREFIX.length));
+      if (e.key && e.key.indexOf(LS_PREFIX) === 0) { const col = e.key.slice(LS_PREFIX.length); if (COLS.indexOf(col) >= 0) this._emit(col); }
     });
   }
   _key(col) { return LS_PREFIX + col; }
   _read(col) { try { return JSON.parse(localStorage.getItem(this._key(col)) || '{}') || {}; } catch (e) { return {}; } }
-  _write(col, obj) { localStorage.setItem(this._key(col), JSON.stringify(obj)); this._emit(col); }
+  _write(col, obj, silent) { localStorage.setItem(this._key(col), JSON.stringify(obj)); if (!silent) this._emit(col); }
   _emit(col) { const docs = Object.values(this._read(col)); (this.subs[col] || []).forEach((cb) => cb(docs)); }
+  emitAll() { COLS.forEach((c) => this._emit(c)); }
+  deleted() { try { return JSON.parse(localStorage.getItem(LS_PREFIX + 'deleted') || '{}') || {}; } catch (e) { return {}; } }
+  _writeDeleted(obj) { localStorage.setItem(LS_PREFIX + 'deleted', JSON.stringify(obj)); }
   subscribe(col, cb) {
     (this.subs[col] = this.subs[col] || []).push(cb);
     cb(Object.values(this._read(col)));
     return () => { this.subs[col] = (this.subs[col] || []).filter((f) => f !== cb); };
   }
-  async set(col, id, data) { const o = this._read(col); o[id] = Object.assign({}, data, { id }); this._write(col, o); }
-  async update(col, id, patch) { const o = this._read(col); o[id] = Object.assign({}, o[id] || {}, patch, { id }); this._write(col, o); }
-  async remove(col, id) { const o = this._read(col); delete o[id]; this._write(col, o); }
-  exportAll() { const out = { app: 'la-pizarra', version: APP_VERSION, exportedAt: nowISO() }; COLS.forEach((c) => { out[c] = this._read(c); }); return out; }
-  importAll(data) { let n = 0; COLS.forEach((c) => { if (data[c] && typeof data[c] === 'object') { const o = this._read(c); for (const id in data[c]) { o[id] = Object.assign({}, data[c][id], { id }); n++; } this._write(c, o); } }); return n; }
+  async set(col, id, data) { const o = this._read(col); o[id] = Object.assign({}, data, { id, updatedAt: nowISO() }); this._write(col, o); }
+  async update(col, id, patch) { const o = this._read(col); o[id] = Object.assign({}, o[id] || {}, patch, { id, updatedAt: nowISO() }); this._write(col, o); }
+  async remove(col, id) { const o = this._read(col); delete o[id]; const d = this.deleted(); d[col + ':' + id] = nowISO(); this._writeDeleted(d); this._write(col, o); }
+  snapshot() { const out = { app: 'llorones', version: APP_VERSION, updatedAt: nowISO(), deleted: this.deleted() }; COLS.forEach((c) => { out[c] = this._read(c); }); return out; }
+  exportAll() { return this.snapshot(); }
+  replaceAll(doc) { COLS.forEach((c) => this._write(c, doc[c] || {}, true)); this._writeDeleted(doc.deleted || {}); this.emitAll(); }
+  importAll(data) { let n = 0; COLS.forEach((c) => { if (data[c] && typeof data[c] === 'object') { const o = this._read(c); for (const id in data[c]) { o[id] = Object.assign({}, data[c][id], { id, updatedAt: nowISO() }); n++; } this._write(c, o); } }); return n; }
 }
 
-class ClaudeDbStore {
-  constructor(db) { this.mode = 'claude'; this.db = db; }
-  subscribe(col, cb) {
-    return this.db.collection(col).onSnapshot(
-      (snap) => cb(snap.docs.filter((d) => d.exists).map((d) => Object.assign({}, d.data(), { id: d.id }))),
-      (err) => console.warn('db error', err)
-    );
-  }
-  async set(col, id, data) { await this.db.doc(col + '/' + id).set(stripUndefined(Object.assign({}, data, { id }))); }
-  async update(col, id, patch) {
-    try { await this.db.doc(col + '/' + id).update(stripUndefined(patch)); }
-    catch (e) { const s = await this.db.doc(col + '/' + id).get(); await this.db.doc(col + '/' + id).set(stripUndefined(Object.assign({}, s.data() || {}, patch, { id }))); }
-  }
-  async remove(col, id) { await this.db.doc(col + '/' + id).delete(); }
-}
-
-class FirebaseStore {
-  constructor(root) { this.mode = 'firebase'; this.db = window.firebase.database(); this.root = root; }
-  ref(path) { return this.db.ref(this.root + '/' + path); }
-  subscribe(col, cb) {
-    const r = this.ref(col);
-    const h = (snap) => { const v = snap.val() || {}; cb(Object.keys(v).map((k) => Object.assign({}, v[k], { id: k }))); };
-    r.on('value', h, (err) => { console.warn('firebase error', err); toast('Sin conexión con la base de datos', true); });
-    return () => r.off('value', h);
-  }
-  async set(col, id, data) { await this.ref(col + '/' + id).set(stripUndefined(Object.assign({}, data, { id }))); }
-  async update(col, id, patch) { await this.ref(col + '/' + id).update(stripUndefined(patch)); }
-  async remove(col, id) { await this.ref(col + '/' + id).remove(); }
-}
-
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = src; s.async = true;
-    s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar ' + src));
-    document.head.appendChild(s);
+/* SYNC-CORE-START */
+function docStamp(d) { return (d && (d.updatedAt || d.createdAt)) || ''; }
+/* Fusiona la copia de la nube con la local: por id gana la marca más reciente; una baja registrada
+   (tombstone) elimina el documento si es posterior a su última modificación. */
+function mergeSnapshots(cloud, local) {
+  cloud = cloud || {}; local = local || {};
+  const merged = { app: 'llorones', version: APP_VERSION, updatedAt: nowISO(), deleted: {} };
+  const del = Object.assign({}, cloud.deleted || {});
+  Object.keys(local.deleted || {}).forEach((k) => { if (!del[k] || del[k] < local.deleted[k]) del[k] = local.deleted[k]; });
+  const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+  Object.keys(del).forEach((k) => { if (del[k] >= cutoff) merged.deleted[k] = del[k]; });
+  COLS.forEach((c) => {
+    const a = cloud[c] || {}, b = local[c] || {}; const out = {};
+    const ids = Object.keys(a).concat(Object.keys(b).filter((id) => !(id in a)));
+    ids.forEach((id) => {
+      const x = a[id], y = b[id];
+      const doc = (x && y) ? (docStamp(y) > docStamp(x) ? y : x) : (x || y);
+      const t = merged.deleted[c + ':' + id];
+      if (t && t >= docStamp(doc)) return;
+      out[id] = Object.assign({}, doc, { id });
+    });
+    merged[c] = out;
   });
+  return merged;
 }
-function readLocalFirebaseConfig() {
-  try { const c = JSON.parse(localStorage.getItem(LS_PREFIX + 'firebase') || 'null'); return c && c.databaseURL ? c : null; } catch (e) { return null; }
-}
-async function initFirebase(cfg) {
-  const v = '10.14.1';
-  await loadScript('https://www.gstatic.com/firebasejs/' + v + '/firebase-app-compat.js');
-  await loadScript('https://www.gstatic.com/firebasejs/' + v + '/firebase-database-compat.js');
-  const clean = Object.assign({}, cfg); delete clean.groupKey;
-  window.firebase.initializeApp(clean);
-  const root = 'pizarra/' + String(cfg.groupKey || 'default').replace(/[.#$\[\]\/\s]+/g, '-');
-  return new FirebaseStore(root);
-}
-async function chooseStore() {
-  try {
-    if (window.claude && typeof window.claude.use === 'function') {
-      const db = await window.claude.use('db');
-      if (db) return new ClaudeDbStore(db);
-    }
-  } catch (e) { console.warn('claude db no disponible', e); }
-  const cfg = FIREBASE_CONFIG || readLocalFirebaseConfig();
-  if (cfg && cfg.databaseURL) {
-    try { return await initFirebase(cfg); }
-    catch (e) { console.warn(e); setTimeout(() => toast('No se pudo conectar con Firebase. Modo local.', true), 300); }
+function sameData(a, b) { const pick = (d) => JSON.stringify(COLS.map((c) => (d && d[c]) || {}).concat([(d && d.deleted) || {}])); return pick(a) === pick(b); }
+function utf8ToB64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function b64ToUtf8(str) { return decodeURIComponent(escape(atob(String(str).replace(/\s/g, '')))); }
+/* SYNC-CORE-END */
+
+/* GH-STORE-START */
+class GitHubStore {
+  constructor(local, cfg) {
+    this.mode = 'github'; this.local = local; this.cfg = cfg;
+    this.token = localStorage.getItem(LS_PREFIX + 'gh_token') || '';
+    this.sync = { lastPull: 0, lastPush: 0, pending: localStorage.getItem(LS_PREFIX + 'pending') === '1', error: '', busy: false };
+    this.listeners = []; this.timer = 0; this.again = false;
   }
-  return new LocalStore();
+  onStatus(cb) { this.listeners.push(cb); }
+  _notify() { this.listeners.forEach((cb) => { try { cb(this.status()); } catch (e) { } }); }
+  status() { return { readOnly: !this.token, pending: this.sync.pending, error: this.sync.error, busy: this.sync.busy, lastPull: this.sync.lastPull, lastPush: this.sync.lastPush }; }
+  subscribe(col, cb) { return this.local.subscribe(col, cb); }
+  async set(col, id, data) { await this.local.set(col, id, data); this._dirty(); }
+  async update(col, id, patch) { await this.local.update(col, id, patch); this._dirty(); }
+  async remove(col, id) { await this.local.remove(col, id); this._dirty(); }
+  exportAll() { return this.local.exportAll(); }
+  importAll(data) { const n = this.local.importAll(data); this._dirty(); return n; }
+  _setPending(v) { this.sync.pending = v; if (v) localStorage.setItem(LS_PREFIX + 'pending', '1'); else localStorage.removeItem(LS_PREFIX + 'pending'); }
+  _dirty() { this._setPending(true); this._notify(); clearTimeout(this.timer); this.timer = setTimeout(() => this.push(), 2500); }
+  _headers() { return { Authorization: 'Bearer ' + this.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
+  _apiPath() { const c = this.cfg; return 'https://api.github.com/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path; }
+  async fetchCloud() {
+    const c = this.cfg;
+    if (this.token) {
+      const r = await fetch(this._apiPath() + '?ref=' + encodeURIComponent(c.branch) + '&t=' + Date.now(), { headers: this._headers(), cache: 'no-store' });
+      if (r.status === 404) return { doc: null, sha: null };
+      if (r.status === 401 || r.status === 403) throw new Error('El código de acceso no es válido o ha caducado');
+      if (!r.ok) throw new Error('GitHub respondió ' + r.status);
+      const j = await r.json();
+      return { doc: JSON.parse(b64ToUtf8(j.content)), sha: j.sha };
+    }
+    const r = await fetch('https://raw.githubusercontent.com/' + c.owner + '/' + c.repo + '/' + c.branch + '/' + c.path + '?t=' + Date.now(), { cache: 'no-store' });
+    if (r.status === 404) return { doc: null, sha: null };
+    if (!r.ok) throw new Error('GitHub respondió ' + r.status);
+    return { doc: await r.json(), sha: null };
+  }
+  async pull() {
+    if (this.sync.busy) return;
+    this.sync.busy = true; this._notify();
+    try {
+      const { doc } = await this.fetchCloud();
+      const localSnap = this.local.snapshot();
+      const merged = mergeSnapshots(doc, localSnap);
+      if (!sameData(merged, localSnap)) this.local.replaceAll(merged);
+      this.sync.lastPull = Date.now(); this.sync.error = '';
+      const hasLocal = COLS.some((c) => Object.keys(localSnap[c] || {}).length) || Object.keys(localSnap.deleted || {}).length;
+      if (this.token && ((doc && !sameData(merged, doc)) || (!doc && hasLocal))) this._setPending(true);
+    } catch (e) { this.sync.error = e.message || String(e); }
+    this.sync.busy = false; this._notify();
+    if (this.sync.pending && this.token) this.push();
+  }
+  async push() {
+    if (!this.token) { this._notify(); return; }
+    if (this.sync.busy) { this.again = true; return; }
+    this.sync.busy = true; this._notify();
+    try {
+      let ok = false;
+      for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+        const { doc, sha } = await this.fetchCloud();
+        const merged = mergeSnapshots(doc, this.local.snapshot());
+        if (!sameData(merged, this.local.snapshot())) this.local.replaceAll(merged);
+        if (doc && sameData(merged, doc)) { ok = true; break; }
+        const who = (typeof state !== 'undefined' && state.meId && athleteById(state.meId)) ? ' · ' + athleteById(state.meId).name : '';
+        const body = { message: 'sync ' + merged.updatedAt + who, content: utf8ToB64(JSON.stringify(merged)), branch: this.cfg.branch };
+        if (sha) body.sha = sha;
+        const r = await fetch(this._apiPath(), { method: 'PUT', headers: this._headers(), body: JSON.stringify(body) });
+        if (r.status === 409 || r.status === 422) continue;
+        if (r.status === 404 && attempt === 0) { await this._ensureBranch(); continue; }
+        if (r.status === 401 || r.status === 403) throw new Error('El código de acceso no es válido o no puede escribir');
+        if (!r.ok) throw new Error('GitHub respondió ' + r.status);
+        ok = true;
+      }
+      if (!ok) throw new Error('Conflicto al guardar; se reintentará');
+      this._setPending(false); this.sync.lastPush = Date.now(); this.sync.error = '';
+    } catch (e) { this.sync.error = e.message || String(e); }
+    this.sync.busy = false; this._notify();
+    if (this.again) { this.again = false; this._dirty(); }
+  }
+  async _ensureBranch() {
+    const c = this.cfg; const base = 'https://api.github.com/repos/' + c.owner + '/' + c.repo;
+    const r = await fetch(base + '/git/ref/heads/main', { headers: this._headers() });
+    if (!r.ok) throw new Error('No se encontró la rama main del repositorio');
+    const sha = (await r.json()).object.sha;
+    const r2 = await fetch(base + '/git/refs', { method: 'POST', headers: this._headers(), body: JSON.stringify({ ref: 'refs/heads/' + c.branch, sha }) });
+    if (!r2.ok && r2.status !== 422) throw new Error('No se pudo crear la rama de datos');
+  }
+  setToken(t) {
+    this.token = (t || '').trim();
+    if (this.token) localStorage.setItem(LS_PREFIX + 'gh_token', this.token); else localStorage.removeItem(LS_PREFIX + 'gh_token');
+    this.sync.error = ''; this._notify(); this.pull();
+  }
+  start() {
+    this.pull();
+    setInterval(() => { if (!document.hidden && !this.sync.busy) this.pull(); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.pull(); });
+    window.addEventListener('online', () => this.pull());
+  }
+}
+/* GH-STORE-END */
+
+async function chooseStore() {
+  const local = new LocalStore();
+  if (GITHUB_SYNC && GITHUB_SYNC.repo) return new GitHubStore(local, GITHUB_SYNC);
+  return local;
+}
+function fmtAgo(ts) {
+  if (!ts) return 'nunca';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 5) return 'ahora mismo';
+  if (s < 60) return 'hace ' + s + ' s';
+  if (s < 3600) return 'hace ' + Math.round(s / 60) + ' min';
+  return 'hace ' + Math.round(s / 3600) + ' h';
 }
 
 /* ============================================================
@@ -440,8 +521,12 @@ function renderTabs() {
   });
 }
 function modeBanner() {
-  const mode = state.store ? state.store.mode : 'local';
-  if (mode === 'local') return '<div class="banner"><span class="dot"></span><span><b>Modo local:</b> los datos solo se guardan en este dispositivo. Configura la sincronización en Perfil para compartirlos.</span></div>';
+  const st = state.store;
+  if (!st) return '';
+  if (st.mode === 'local') return '<div class="banner"><span class="dot"></span><span><b>Modo local:</b> los datos solo se guardan en este dispositivo.</span></div>';
+  const y = st.status();
+  if (y.readOnly) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>Solo lectura:</b> ves las marcas de todos, pero las tuyas no se comparten. Toca aquí para pegar el código de acceso.</span></button>';
+  if (y.error) return '<div class="banner"><span class="dot"></span><span><b>Sin conexión con la nube:</b> ' + esc(y.error) + '. Tus marcas se guardan aquí y se subirán solas.</span></div>';
   return '';
 }
 function loadingAll() { return !(state.loaded.athletes && state.loaded.workouts && state.loaded.results); }
@@ -457,7 +542,7 @@ function viewHome() {
   let html = '<div class="view">' + modeBanner();
 
   if (!m) {
-    html += '<section class="card hero-wod"><span class="eyebrow">Bienvenido</span><h1 class="h-display h1">Apúntate en la pizarra</h1>' +
+    html += '<section class="card hero-wod"><span class="eyebrow">Bienvenido a ' + esc(APP_NAME) + '</span><h1 class="h-display h1">Apúntate en la pizarra</h1>' +
       '<p class="muted">Elige tu atleta o crea uno nuevo para apuntar tiempos y sumar puntos.</p>' +
       '<div class="btn-row"><button class="btn primary" data-action="pick-athlete">Elegir atleta</button><button class="btn" data-action="new-athlete">Crear atleta</button></div></section>';
   }
@@ -632,14 +717,27 @@ function viewProfile() {
     html += '<p class="muted">Todavía no hay nadie apuntado.</p>';
   }
   html += '</section>';
-  html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Sincronización</h2></div>' +
-    (mode === 'local'
-      ? '<div class="banner"><span class="dot"></span><span>Modo local: los datos solo están en este dispositivo.</span></div><p class="small muted">Para compartir con la cuadrilla, crea una base de datos gratuita en Firebase y pega su configuración aquí (o en el archivo de la app, para que valga para todos).</p><button class="btn" data-action="firebase-config">Configurar Firebase</button>'
-      : '<div class="banner live"><span class="dot"></span><span>' + (mode === 'firebase' ? 'Conectado a Firebase: todos veis los mismos datos.' : 'Base de datos compartida del Artifact.') + '</span></div>' + (mode === 'firebase' && !FIREBASE_CONFIG ? '<button class="btn ghost sm" data-action="firebase-forget">Quitar configuración de este dispositivo</button>' : '')) +
-    '<div class="btn-row"><button class="btn ghost" data-action="export">Exportar copia</button><button class="btn ghost" data-action="import">Importar copia</button></div></section>';
+  html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Nube</h2></div>';
+  if (mode === 'github') {
+    const y = state.store.status();
+    if (y.readOnly) {
+      html += '<div class="banner"><span class="dot"></span><span>Solo lectura: tus marcas se quedan en este móvil.</span></div>' +
+        '<p class="small muted">Los datos de la cuadrilla viven en el repositorio de GitHub. Para que tus marcas se compartan, pega el código de acceso que te pase quien administra el club.</p>' +
+        '<button class="btn primary" data-action="gh-token">Pegar código de acceso</button>';
+    } else {
+      html += '<div class="banner live"><span class="dot"></span><span>Conectado: todos veis las mismas marcas.</span></div>' +
+        '<div class="kv"><span class="muted">Última descarga</span><b>' + esc(fmtAgo(y.lastPull)) + '</b></div>' +
+        '<div class="kv"><span class="muted">Última subida</span><b>' + esc(y.pending ? (y.busy ? 'subiendo…' : 'pendiente') : fmtAgo(y.lastPush)) + '</b></div>' +
+        (y.error ? '<p class="form-error">' + esc(y.error) + '</p>' : '') +
+        '<div class="btn-row"><button class="btn" data-action="gh-sync">Sincronizar ahora</button><button class="btn ghost" data-action="gh-forget">Quitar código</button></div>';
+    }
+  } else {
+    html += '<div class="banner"><span class="dot"></span><span>Modo local: los datos solo están en este dispositivo.</span></div>';
+  }
+  html += '<div class="btn-row"><button class="btn ghost" data-action="export">Exportar copia</button><button class="btn ghost" data-action="import">Importar copia</button></div></section>';
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Ajustes</h2></div>' +
     '<label class="check"><input type="checkbox" data-action="toggle-sound" ' + (state.sound ? 'checked' : '') + '> Pitidos del cronómetro</label>' +
-    '<p class="faint small">La Pizarra v' + APP_VERSION + ' · ' + HEROES.length + ' Hero WODs y ' + GIRLS.length + ' Girls de crossfit.com</p></section>';
+    '<p class="faint small">' + APP_NAME + ' v' + APP_VERSION + ' · ' + HEROES.length + ' Hero WODs y ' + GIRLS.length + ' Girls de crossfit.com</p></section>';
   return html + '</div>';
 }
 
@@ -965,7 +1063,7 @@ async function saveWorkout(existingId) {
 }
 function openNewAthlete(existing) {
   const a = existing || { name: '', color: COLORS[state.athletes.length % COLORS.length] };
-  const body = (existing ? '' : (state.athletes.length ? '' : '<p class="muted">Bienvenido a La Pizarra. Crea tu atleta para empezar a apuntar tiempos.</p>')) +
+  const body = (existing ? '' : (state.athletes.length ? '' : '<p class="muted">Bienvenido a ' + APP_NAME + '. Crea tu atleta para empezar a apuntar tiempos.</p>')) +
     '<div class="field"><label for="a-name">Nombre</label><input type="text" id="a-name" value="' + esc(a.name) + '" placeholder="Como te llaman en el box" maxlength="30"></div>' +
     '<div class="field"><span class="label">Tu disco</span><div class="color-picks">' + COLORS.map((c) => '<button type="button" data-action="pick-color" data-color="' + c + '" aria-pressed="' + (a.color === c) + '" aria-label="' + esc(COLOR_LABEL[c]) + '" title="' + esc(COLOR_LABEL[c]) + '" style="--c:var(--plate-' + (c === 'black' ? 'white' : c) + ')' + (c === 'black' ? ';background:#3a3f39' : '') + '"></button>').join('') + '</div></div>' +
     '<p class="form-error" id="a-error"></p>';
@@ -990,16 +1088,15 @@ function openPickAthlete() {
   const body = '<p class="muted">¿Quién está usando este móvil? Los tiempos que apuntes contarán para ese atleta.</p><div class="athlete-grid">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => '<button class="athlete-card" data-action="select-athlete" data-id="' + esc(a.id) + '" aria-pressed="' + (a.id === state.meId) + '" aria-label="' + esc(a.name) + '">' + avatar(a, 'lg') + '<span class="nm">' + esc(a.name) + '</span></button>').join('') + '</div>';
   openSheet({ title: '¿Quién eres?', body, focus: false, foot: '<button class="btn" data-action="new-athlete">+ Soy nuevo</button>' });
 }
-function openFirebaseConfig() {
-  const cur = readLocalFirebaseConfig();
-  const body = '<p class="small muted">Pega el objeto de configuración de tu proyecto de Firebase (Consola → Configuración del proyecto → Tus apps → SDK). Añade <code>groupKey</code> con una palabra para vuestro grupo. Se guarda solo en este dispositivo; para que valga para todos, ponlo en el archivo de la app.</p>' +
-    '<div class="field"><label for="fb-json">Configuración</label><textarea id="fb-json" placeholder=\'{ "apiKey": "...", "databaseURL": "https://....firebasedatabase.app", "projectId": "...", "groupKey": "cuadrilla" }\'>' + esc(cur ? JSON.stringify(cur, null, 2) : '') + '</textarea></div><p class="form-error" id="fb-error"></p>';
-  openSheet({ title: 'Configurar Firebase', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-firebase">Guardar y recargar</button>' });
+function openTokenSheet() {
+  const body = '<p class="small muted">El código de acceso es un token de GitHub que permite escribir en el repositorio del club. Pídeselo a quien administra el club y pégalo aquí: se guarda solo en este dispositivo y nunca sale en las copias exportadas.</p>' +
+    '<div class="field"><label for="gh-tok">Código de acceso</label><input type="text" id="gh-tok" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false"></div><p class="form-error" id="gh-error"></p>';
+  openSheet({ title: 'Código de acceso', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="gh-save-token">Conectar</button>' });
 }
 function exportData() {
-  const data = state.store.exportAll ? state.store.exportAll() : { app: 'la-pizarra', version: APP_VERSION, exportedAt: nowISO(), athletes: Object.fromEntries(state.athletes.map((a) => [a.id, a])), workouts: Object.fromEntries(state.workouts.map((w) => [w.id, w])), results: Object.fromEntries(state.results.map((r) => [r.id, r])) };
+  const data = state.store.exportAll(); delete data.deleted;
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'la-pizarra-' + todayISO() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'llorones-' + todayISO() + '.json'; document.body.appendChild(a); a.click(); a.remove();
   toast('Copia exportada');
 }
 function importData() {
@@ -1008,10 +1105,9 @@ function importData() {
     const f = input.files[0]; if (!f) return;
     try {
       const data = JSON.parse(await f.text());
-      if (!data || data.app !== 'la-pizarra') throw new Error('No es una copia de La Pizarra');
-      let n = 0;
-      for (const c of COLS) { for (const id in (data[c] || {})) { await state.store.set(c, id, data[c][id]); n++; } }
-      toast('Importados ' + n + ' registros');
+      if (!data || (data.app !== 'llorones' && data.app !== 'la-pizarra')) throw new Error('No es una copia de ' + APP_NAME);
+      const n = state.store.importAll(data);
+      toast('Importados ' + n + ' registros'); render();
     } catch (e) { toast('No se pudo importar: ' + e.message, true); }
   };
   input.click();
@@ -1099,17 +1195,14 @@ const ACTIONS = {
     else pre.reps = 0;
     openLogResult(w ? w.id : null, pre);
   },
-  'firebase-config': () => openFirebaseConfig(),
-  'save-firebase': () => {
-    const err = $('#fb-error'); err.textContent = '';
-    try {
-      const txt = $('#fb-json').value.trim();
-      const cfg = txt ? JSON.parse(txt) : null;
-      if (!cfg || !cfg.databaseURL) throw new Error('Falta databaseURL');
-      localStorage.setItem(LS_PREFIX + 'firebase', JSON.stringify(cfg)); location.reload();
-    } catch (e) { err.textContent = 'Configuración no válida: ' + e.message; }
+  'gh-token': () => openTokenSheet(),
+  'gh-save-token': () => {
+    const t = $('#gh-tok').value.trim(); const err = $('#gh-error');
+    if (t.length < 20) { err.textContent = 'Eso no parece un código de acceso de GitHub.'; return; }
+    state.store.setToken(t); closeSheet(); toast('Conectando con la nube…'); render();
   },
-  'firebase-forget': () => { localStorage.removeItem(LS_PREFIX + 'firebase'); location.reload(); },
+  'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); closeSheet(); render(); } else closeSheet(); },
+  'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
   'export': () => exportData(),
   'import': () => importData(),
   'toggle-sound': (el) => { state.sound = el.checked; localStorage.setItem(LS_PREFIX + 'sound', state.sound ? 'on' : 'off'); if (state.sound) beepShort(); },
@@ -1147,6 +1240,7 @@ async function boot() {
   state.meId = readMe();
   render();
   state.store = await chooseStore();
+  if (state.store.onStatus) state.store.onStatus(() => { if ((state.view === 'home' || state.view === 'profile') && !$('#sheet-root').firstChild) render(); });
   COLS.forEach((col) => {
     state.store.subscribe(col, (docs) => {
       state[col] = docs.slice();
@@ -1161,5 +1255,6 @@ async function boot() {
     });
   });
   render();
+  if (state.store.start) state.store.start();
 }
 boot();

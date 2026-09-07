@@ -1,41 +1,28 @@
-# La Pizarra
+# Llorones Crossfit Club
 
-**App:** <https://alejandromartinherrer.github.io/la-pizarra/> · **Código:** <https://github.com/alejandromartinherrer/la-pizarra>
+**App:** <https://alejandromartinherrer.github.io/llorones-crossfit-club/> · **Código:** <https://github.com/alejandromartinherrer/llorones-crossfit-club>
 
-La pizarra de la cuadrilla de CrossFit: tiempos, entrenos, cronómetro, los 249 Hero WODs y las 30 Girls de crossfit.com, y una clasificación por puntos. Un solo archivo `index.html`, sin instalación: se abre en el móvil como una web y se puede añadir a la pantalla de inicio.
+La pizarra de la cuadrilla: tiempos, entrenos, cronómetro, los 249 Hero WODs y las 30 Girls de crossfit.com, y una clasificación por puntos. Un solo `index.html`, sin instalación: se abre en el móvil como una web y se puede añadir a la pantalla de inicio (Safari → Compartir → Añadir a pantalla de inicio).
 
-## Publicar en GitHub Pages (5 minutos)
+## Cómo compartimos los datos (igual que la app de nutrición)
 
-1. Crea un repositorio en GitHub (por ejemplo `la-pizarra`) y sube `index.html` a la raíz.
-2. En el repositorio: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: main / (root) → Save**.
-3. En un minuto la app queda en <https://alejandromartinherrer.github.io/la-pizarra/>. Comparte ese enlace con la cuadrilla (ya está hecho para este repositorio).
+Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json`, en la rama **`data`** de este repositorio. La app los lee y los escribe sola por la API de GitHub; no hay ningún servidor ni cuenta externa.
 
-## Compartir los datos entre todos (Firebase, gratis)
+- **Leer es público**: cualquiera que abra el enlace ve las marcas y la clasificación de la cuadrilla.
+- **Para escribir hace falta un código de acceso** (un token de GitHub). Cada persona lo pega una vez en **Perfil → Nube → Pegar código de acceso**; se guarda solo en su móvil y nunca sale en las copias exportadas. Sin código, el móvil está en *solo lectura* y lo avisa en la pantalla Hoy.
+- Cada cambio se sube a los pocos segundos; la app se descarga la copia de la nube al abrirse, al volver a primer plano, al recuperar conexión y cada minuto. Si dos personas apuntan a la vez no se pierde nada: las copias se **fusionan por id** (gana la modificación más reciente; los borrados también se propagan).
+- Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
 
-Sin configurar nada la app funciona en **modo local**: cada móvil guarda sus propios datos. Para que todos veáis los mismos tiempos y la misma clasificación:
+### Crear el código de acceso (lo hace quien administra el club, una vez)
 
-1. Entra en <https://console.firebase.google.com>, **Añadir proyecto** (nombre libre, sin Analytics).
-2. En el proyecto: **Compilación → Realtime Database → Crear base de datos** → elige la ubicación (Bélgica / europe-west1 va bien) → **Empezar en modo de prueba**.
-3. Pestaña **Reglas** de la base de datos: pon esto y publica (cualquiera con el enlace puede leer y escribir; para un grupo de amigos es suficiente):
-   ```json
-   { "rules": { ".read": true, ".write": true } }
-   ```
-4. **Configuración del proyecto (rueda dentada) → Tus apps → icono web `</>`** → registra la app (sin hosting) y copia el objeto `firebaseConfig`.
-5. Abre `index.html` con un editor de texto, busca `const FIREBASE_CONFIG = null;` y sustitúyelo por tu configuración, añadiendo una `groupKey` (una palabra para vuestro grupo):
-   ```js
-   const FIREBASE_CONFIG = {
-     apiKey: "AIza....",
-     authDomain: "la-pizarra-1234.firebaseapp.com",
-     databaseURL: "https://la-pizarra-1234-default-rtdb.europe-west1.firebasedatabase.app",
-     projectId: "la-pizarra-1234",
-     groupKey: "cuadrilla-2026"
-   };
-   ```
-6. Sube el `index.html` actualizado al repositorio. Listo: todos los que abran el enlace comparten atletas, entrenos y resultados en tiempo real.
+1. GitHub → foto de perfil → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. Nombre libre (p. ej. `llorones-app`), caducidad la máxima que permita (1 año) y **Repository access: Only select repositories → `llorones-crossfit-club`**.
+3. **Permissions → Repository permissions → Contents: Read and write**. Nada más.
+4. Genera el token, cópialo y pásaselo a la cuadrilla por el canal que uséis. Cada uno lo pega en la app.
 
-Alternativa sin tocar el archivo: en la app, **Perfil → Configurar Firebase** y pega el mismo objeto JSON (solo vale para ese dispositivo).
+Riesgo asumido: quien tenga el código puede escribir en este repositorio (solo en este). Mitigación: alcance mínimo y caducidad; si se filtra, se revoca en GitHub y se genera otro. Cuando caduque, la app lo avisa en Perfil → Nube.
 
-Nota: el `apiKey` de Firebase no es secreto (va en cualquier web que use Firebase); lo que protege los datos son las reglas. Con reglas abiertas, cualquiera que conozca la URL de la base de datos podría escribir; la `groupKey` solo separa los datos de vuestro grupo.
+Si la rama `data` desapareciera, la app intenta recrearla sola desde `main`; también vale `git push origin main:data`.
 
 ## Cómo se puntúa
 
@@ -54,13 +41,24 @@ Cuenta la mejor marca de cada atleta en cada entreno; Rx siempre queda por delan
 
 ## Cronómetro
 
-For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno, queda preconfigurado y al terminar el resultado se apunta con un toque.
+For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
 
 ## Datos
 
-- Los Hero WODs vienen del PDF oficial de CrossFit (`crossfit.com/heroes`, edición 20260520) y de sus fichas en `crossfit.com/benchmark/…`; cada uno incluye prescripción, cargas ♀/♂, fecha de publicación y a quién honra.
-- Copia de seguridad: **Perfil → Exportar copia** genera un JSON con todo; **Importar copia** lo vuelve a cargar (también sirve para pasar datos del modo local a Firebase).
+- Los Hero WODs vienen del PDF oficial de CrossFit (`crossfit.com/heroes`, edición 20260520) y de sus fichas en `crossfit.com/benchmark/…`; cada uno incluye prescripción, cargas ♀/♂ (en lb y kg), fecha de publicación y a quién honra.
+- Copia de seguridad: **Perfil → Exportar copia** genera un JSON con todo; **Importar copia** lo fusiona con lo que haya.
 
 ## Desarrollo
 
-`src/` contiene `index.html`, `app.css` y `app.js`; `data/` los JSON de héroes y girls. `node build.js` genera `dist/index.html`.
+| Archivo | Rol |
+|---|---|
+| `index.html` | La app completa, generada por `build.js` |
+| `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
+| `data/heroes.json`, `data/girls.json` | Catálogo incrustado en el build |
+| `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
+
+```bash
+node build.js && node test/sync.test.js
+```
+
+Al cambiar algo: editar `src/`, ejecutar el build, subir `index.html` a `main`. Pages publica en un minuto. La rama `data` solo la toca la app.
