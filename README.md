@@ -12,15 +12,21 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 - **Para escribir hace falta un código de acceso** (un token de GitHub). Cada persona lo pega una vez en **Perfil → Nube → Pegar código de acceso**; se guarda solo en su móvil y nunca sale en las copias exportadas. Sin código, el móvil está en *solo lectura* y lo avisa en la pantalla Hoy.
 - Cada cambio se sube a los pocos segundos; la app se descarga la copia de la nube al abrirse, al volver a primer plano, al recuperar conexión y cada minuto. Si dos personas apuntan a la vez no se pierde nada: las copias se **fusionan por id** (gana la modificación más reciente; los borrados también se propagan).
 - Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
+- Si el código caduca o se pega mal, la app **sigue enseñando las marcas de todos** (la lectura es pública) y avisa de que las tuyas no se están compartiendo.
 
 ### Crear el código de acceso (lo hace quien administra el club, una vez)
 
-1. GitHub → foto de perfil → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. Nombre libre (p. ej. `llorones-app`), caducidad la máxima que permita (1 año) y **Repository access: Only select repositories → `llorones-crossfit-club`**.
-3. **Permissions → Repository permissions → Contents: Read and write**. Nada más.
-4. Genera el token, cópialo y pásaselo a la cuadrilla por el canal que uséis. Cada uno lo pega en la app.
+1. En GitHub, arriba a la derecha: **foto de perfil → Settings**. En la barra lateral izquierda, abajo del todo, **Developer settings**. Allí, bajo el apartado **Personal access tokens**, entra en **Fine-grained tokens** y pulsa **Generate new token**.
+2. **Token name**: lo que quieras, por ejemplo `llorones-app`.
+3. **Resource owner**: deja tu propia cuenta (`alejandromartinherrer`). Si eliges una organización, el repositorio del club no aparecerá en la lista.
+4. **Expiration**: elige **Custom** y pon una fecha; el máximo con fecha son 366 días. GitHub también ofrece **No expiration**, pero no la uses: que caduque es parte de la seguridad de este montaje.
+5. **Repository access**: marca **Only select repositories** y, en el desplegable **Select repositories** que aparece debajo, busca y marca `llorones-crossfit-club`.
+6. **Permissions → Repository permissions**: busca **Contents** y ponlo en **Read and write**. No hace falta nada más; GitHub añade solo **Metadata: Read-only**, que aparece marcado y no se puede quitar.
+7. Pulsa **Generate token**. El código (empieza por `github_pat_`) **solo se muestra una vez**: cópialo en ese momento y pásaselo a la cuadrilla. Si cierras la página sin copiarlo, no se puede recuperar y hay que generar otro.
 
-Riesgo asumido: quien tenga el código puede escribir en este repositorio (solo en este). Mitigación: alcance mínimo y caducidad; si se filtra, se revoca en GitHub y se genera otro. Cuando caduque, la app lo avisa en Perfil → Nube.
+Cada uno lo pega en **Perfil → Nube → Pegar código de acceso**. La app lo comprueba contra GitHub antes de guardarlo: si está mal o ha caducado te lo dice y conserva el que tuvieras.
+
+Riesgo asumido: quien tenga el código puede escribir en este repositorio (solo en este). Mitigación: alcance mínimo y caducidad; si se filtra, se revoca en GitHub y se genera otro. Cuando caduque, la app avisa en la pantalla Hoy y en Perfil → Nube, y se sigue viendo todo mientras tanto.
 
 Si la rama `data` desapareciera, la app intenta recrearla sola desde `main`; también vale `git push origin main:data`.
 
@@ -56,17 +62,13 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json` | Catálogo incrustado en el build |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/live5.js` | Prueba en vivo: cinco móviles (Chrome headless) usan la app y publican en la nube |
-| `test/drive.js`, `test/shots.js` | Utilidades de esas pruebas y generador de capturas |
+| `test/live5.js` | Prueba en vivo: cinco móviles (Chrome sin ventana) usan la app y publican en la nube |
+| `test/drive.js`, `test/shots.js` | Utilidades de esa prueba y generador de capturas |
 
 ```bash
 node build.js && node test/sync.test.js
 ```
 
-La prueba en vivo (`node test/live5.js`) abre cinco Chrome sin ventana, cada uno con su
-propio almacenamiento, y hace de cinco personas: se dan de alta, apuntan marcas, crean un
-entreno, usan el cronómetro y comprueban que todos ven lo de los demás. **Vacía la nube al
-empezar**, así que solo se ejecuta a propósito; necesita `gh_token.txt` en la raíz (no se
-sube: está en `.gitignore`) y la app servida en `http://127.0.0.1:8765`.
+`node test/live5.js` hace la prueba completa con cinco personas: **vacía la nube al empezar**, así que solo se lanza a propósito; necesita `gh_token.txt` en la raíz (no se sube: está en `.gitignore`) y la app servida en `http://127.0.0.1:8765`.
 
 Al cambiar algo: editar `src/`, ejecutar el build, subir `index.html` a `main`. Pages publica en un minuto. La rama `data` solo la toca la app.

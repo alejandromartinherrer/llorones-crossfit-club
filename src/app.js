@@ -133,20 +133,22 @@ function mergeSnapshots(cloud, local) {
   const merged = { app: 'llorones', version: APP_VERSION, updatedAt: nowISO(), deleted: {} };
   const del = Object.assign({}, cloud.deleted || {});
   Object.keys(local.deleted || {}).forEach((k) => { if (!del[k] || del[k] < local.deleted[k]) del[k] = local.deleted[k]; });
-  const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
-  Object.keys(del).forEach((k) => { if (del[k] >= cutoff) merged.deleted[k] = del[k]; });
   COLS.forEach((c) => {
     const a = cloud[c] || {}, b = local[c] || {}; const out = {};
     const ids = Object.keys(a).concat(Object.keys(b).filter((id) => !(id in a)));
     ids.forEach((id) => {
       const x = a[id], y = b[id];
       const doc = (x && y) ? (docStamp(y) > docStamp(x) ? y : x) : (x || y);
-      const t = merged.deleted[c + ':' + id];
+      const t = del[c + ':' + id];               // se aplican TODAS las bajas...
       if (t && t >= docStamp(doc)) return;
       out[id] = Object.assign({}, doc, { id });
     });
     merged[c] = out;
   });
+  // ...y solo después se podan las más viejas de dos años, para que una baja
+  // antigua no resucite nada al desaparecer.
+  const cutoff = new Date(Date.now() - 730 * 86400000).toISOString();
+  Object.keys(del).forEach((k) => { if (del[k] >= cutoff) merged.deleted[k] = del[k]; });
   return merged;
 }
 function sameData(a, b) { const pick = (d) => JSON.stringify(COLS.map((c) => (d && d[c]) || {}).concat([(d && d.deleted) || {}])); return pick(a) === pick(b); }
@@ -159,12 +161,12 @@ class GitHubStore {
   constructor(local, cfg) {
     this.mode = 'github'; this.local = local; this.cfg = cfg;
     this.token = localStorage.getItem(LS_PREFIX + 'gh_token') || '';
-    this.sync = { lastPull: 0, lastPush: 0, pending: localStorage.getItem(LS_PREFIX + 'pending') === '1', error: '', busy: false };
-    this.listeners = []; this.timer = 0; this.again = false;
+    this.sync = { lastPull: 0, lastPush: 0, pending: localStorage.getItem(LS_PREFIX + 'pending') === '1', error: '', fatal: false, busy: false };
+    this.listeners = []; this.timer = 0; this.again = false; this.poll = 0;
   }
   onStatus(cb) { this.listeners.push(cb); }
   _notify() { this.listeners.forEach((cb) => { try { cb(this.status()); } catch (e) { } }); }
-  status() { return { readOnly: !this.token, pending: this.sync.pending, error: this.sync.error, busy: this.sync.busy, lastPull: this.sync.lastPull, lastPush: this.sync.lastPush }; }
+  status() { return { readOnly: !this.token || this.sync.fatal, badToken: this.sync.fatal, pending: this.sync.pending, error: this.sync.error, busy: this.sync.busy, lastPull: this.sync.lastPull, lastPush: this.sync.lastPush }; }
   subscribe(col, cb) { return this.local.subscribe(col, cb); }
   async set(col, id, data) { await this.local.set(col, id, data); this._dirty(); }
   async update(col, id, patch) { await this.local.update(col, id, patch); this._dirty(); }
@@ -177,13 +179,23 @@ class GitHubStore {
   _apiPath() { const c = this.cfg; return 'https://api.github.com/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path; }
   async fetchCloud() {
     const c = this.cfg;
+    const url = this._apiPath() + '?ref=' + encodeURIComponent(c.branch) + '&t=' + Date.now();
     if (this.token) {
-      const r = await fetch(this._apiPath() + '?ref=' + encodeURIComponent(c.branch) + '&t=' + Date.now(), { headers: this._headers(), cache: 'no-store' });
-      if (r.status === 404) return { doc: null, sha: null };
-      if (r.status === 401 || r.status === 403) throw new Error('El código de acceso no es válido o ha caducado');
-      if (!r.ok) throw new Error('GitHub respondió ' + r.status);
-      const j = await r.json();
-      return { doc: JSON.parse(b64ToUtf8(j.content)), sha: j.sha };
+      const r = await fetch(url, { headers: this._headers(), cache: 'no-store' });
+      if (r.status === 404) { this.sync.fatal = false; return { doc: null, sha: null }; }
+      if (r.status === 401 || r.status === 403) {
+        /* El código no vale: se sigue leyendo como cualquier visitante, para no
+           quedarse a ciegas; escribir sí queda bloqueado. */
+        this.sync.fatal = true;
+      } else if (r.ok) {
+        this.sync.fatal = false;
+        const j = await r.json();
+        /* Por encima de 1 MB la API no devuelve el contenido: se pide en bruto. */
+        let doc;
+        if (j.content && j.encoding === 'base64') doc = JSON.parse(b64ToUtf8(j.content));
+        else doc = await (await fetch(url, { headers: Object.assign({}, this._headers(), { Accept: 'application/vnd.github.raw' }), cache: 'no-store' })).json();
+        return { doc, sha: j.sha };
+      } else throw new Error('GitHub respondió ' + r.status);
     }
     /* Sin código de acceso: la API pública devuelve la copia recién publicada
        (60 peticiones por hora y IP). Si no está disponible se usa el fichero en
@@ -206,20 +218,21 @@ class GitHubStore {
       const localSnap = this.local.snapshot();
       const merged = mergeSnapshots(doc, localSnap);
       if (!sameData(merged, localSnap)) this.local.replaceAll(merged);
-      this.sync.lastPull = Date.now(); this.sync.error = '';
+      this.sync.lastPull = Date.now();
+      this.sync.error = this.sync.fatal ? 'El código de acceso no vale o ha caducado' : '';
       const hasLocal = COLS.some((c) => Object.keys(localSnap[c] || {}).length) || Object.keys(localSnap.deleted || {}).length;
       if (this.token && ((doc && !sameData(merged, doc)) || (!doc && hasLocal))) this._setPending(true);
     } catch (e) { this.sync.error = e.message || String(e); }
     this.sync.busy = false; this._notify();
-    if (this.sync.pending && this.token) this.push();
+    if (this.sync.pending && this.token && !this.sync.fatal) this.push();
   }
   async push() {
-    if (!this.token) { this._notify(); return; }
+    if (!this.token || this.sync.fatal) { this._notify(); return; }
     if (this.sync.busy) { this.again = true; return; }
     this.sync.busy = true; this._notify();
     try {
       let ok = false;
-      for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+      for (let attempt = 0; attempt < 6 && !ok; attempt++) {
         const { doc, sha } = await this.fetchCloud();
         const merged = mergeSnapshots(doc, this.local.snapshot());
         if (!sameData(merged, this.local.snapshot())) this.local.replaceAll(merged);
@@ -228,9 +241,9 @@ class GitHubStore {
         const body = { message: 'sync ' + merged.updatedAt + who, content: utf8ToB64(JSON.stringify(merged)), branch: this.cfg.branch };
         if (sha) body.sha = sha;
         const r = await fetch(this._apiPath(), { method: 'PUT', headers: this._headers(), body: JSON.stringify(body) });
-        if (r.status === 409 || r.status === 422) continue;
+        if (r.status === 409 || r.status === 422) { await new Promise((z) => setTimeout(z, 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 250))); continue; }
         if (r.status === 404 && attempt === 0) { await this._ensureBranch(); continue; }
-        if (r.status === 401 || r.status === 403) throw new Error('El código de acceso no es válido o no puede escribir');
+        if (r.status === 401 || r.status === 403) { this.sync.fatal = true; throw new Error('El código de acceso no vale o ha caducado'); }
         if (!r.ok) throw new Error('GitHub respondió ' + r.status);
         ok = true;
       }
@@ -248,14 +261,34 @@ class GitHubStore {
     const r2 = await fetch(base + '/git/refs', { method: 'POST', headers: this._headers(), body: JSON.stringify({ ref: 'refs/heads/' + c.branch, sha }) });
     if (!r2.ok && r2.status !== 422) throw new Error('No se pudo crear la rama de datos');
   }
+  /* Comprueba el código contra GitHub antes de guardarlo, para no perder el bueno. */
+  async checkToken(t) {
+    t = (t || '').trim();
+    if (!t) return { ok: false, motivo: 'Pega el código de acceso.' };
+    const c = this.cfg;
+    let r;
+    try {
+      r = await fetch(this._apiPath() + '?ref=' + encodeURIComponent(c.branch) + '&t=' + Date.now(),
+        { headers: { Authorization: 'Bearer ' + t, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, cache: 'no-store' });
+    } catch (e) { return { ok: false, motivo: 'Sin conexión: inténtalo otra vez.' }; }
+    if (r.status === 401 || r.status === 403) return { ok: false, motivo: 'Ese código no vale para este club (o ha caducado). Pide uno nuevo.' };
+    if (!r.ok && r.status !== 404) return { ok: false, motivo: 'GitHub respondió ' + r.status + '. Inténtalo otra vez.' };
+    return { ok: true };
+  }
   setToken(t) {
     this.token = (t || '').trim();
     if (this.token) localStorage.setItem(LS_PREFIX + 'gh_token', this.token); else localStorage.removeItem(LS_PREFIX + 'gh_token');
-    this.sync.error = ''; this._notify(); this.pull();
+    this.sync.error = ''; this.sync.fatal = false; this._notify();
+    this._startPoll();
+    this.pull();
+  }
+  _startPoll() {
+    clearInterval(this.poll);
+    this.poll = setInterval(() => { if (!document.hidden && !this.sync.busy) this.pull(); }, this.token ? 60000 : 180000);
   }
   start() {
     this.pull();
-    setInterval(() => { if (!document.hidden && !this.sync.busy) this.pull(); }, this.token ? 60000 : 180000);
+    this._startPoll();
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.pull(); });
     window.addEventListener('online', () => this.pull());
   }
@@ -489,6 +522,7 @@ function toast(msg, bad) {
 /* --- sheets --- */
 function openSheet(opts) {
   const root = $('#sheet-root');
+  if (!root.firstChild) { try { history.pushState({ sheet: true }, ''); } catch (e) { } }
   root.innerHTML =
     '<div class="sheet-backdrop" data-action="sheet-backdrop">' +
     '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">' +
@@ -501,7 +535,16 @@ function openSheet(opts) {
   if (first && opts.focus !== false) setTimeout(() => first.focus(), 60);
   return root;
 }
+/* Cierra la hoja sin tocar el historial. Si después se navega, go() sustituye
+   la entrada de la hoja por la pantalla de destino. */
 function closeSheet() { $('#sheet-root').innerHTML = ''; }
+/* La cierra el usuario (X, Cancelar, tocar fuera o Escape): se retrocede, de
+   modo que el historial queda como antes de abrirla. */
+function dismissSheet() {
+  const habia = !!$('#sheet-root').firstChild;
+  closeSheet();
+  if (habia && history.state && history.state.sheet) { try { history.back(); } catch (e) { } }
+}
 function confirmSheet(title, text, okLabel) {
   return new Promise((resolve) => {
     openSheet({
@@ -533,6 +576,7 @@ function modeBanner() {
   if (!st) return '';
   if (st.mode === 'local') return '<div class="banner"><span class="dot"></span><span><b>Modo local:</b> los datos solo se guardan en este dispositivo.</span></div>';
   const y = st.status();
+  if (y.badToken) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>El código de acceso ya no vale:</b> sigues viendo las marcas de todos, pero las tuyas no se comparten. Toca aquí para pegar uno nuevo.</span></button>';
   if (y.readOnly) return '<button class="banner" style="width:100%;text-align:left;border:0;cursor:pointer" data-action="gh-token"><span class="dot"></span><span><b>Solo lectura:</b> ves las marcas de todos, pero las tuyas no se comparten. Toca aquí para pegar el código de acceso.</span></button>';
   if (y.error) return '<div class="banner"><span class="dot"></span><span><b>Sin conexión con la nube:</b> ' + esc(y.error) + '. Tus marcas se guardan aquí y se subirán solas.</span></div>';
   return '';
@@ -729,9 +773,9 @@ function viewProfile() {
   if (mode === 'github') {
     const y = state.store.status();
     if (y.readOnly) {
-      html += '<div class="banner"><span class="dot"></span><span>Solo lectura: tus marcas se quedan en este móvil.</span></div>' +
+      html += '<div class="banner"><span class="dot"></span><span>' + (y.badToken ? 'El código de acceso ya no vale: tus marcas se quedan en este móvil.' : 'Solo lectura: tus marcas se quedan en este móvil.') + '</span></div>' +
         '<p class="small muted">Los datos de la cuadrilla viven en el repositorio de GitHub. Para que tus marcas se compartan, pega el código de acceso que te pase quien administra el club.</p>' +
-        '<button class="btn primary" data-action="gh-token">Pegar código de acceso</button>';
+        '<button class="btn primary" data-action="gh-token">' + (y.badToken ? 'Pegar un código nuevo' : 'Pegar código de acceso') + '</button>';
     } else {
       html += '<div class="banner live"><span class="dot"></span><span>Conectado: todos veis las mismas marcas.</span></div>' +
         '<div class="kv"><span class="muted">Última descarga</span><b>' + esc(fmtAgo(y.lastPull)) + '</b></div>' +
@@ -1016,10 +1060,10 @@ async function saveResult() {
   }
   try {
     await state.store.set('results', r.id, r);
-    closeSheet();
     const pr = isPR(Object.assign({}, r));
     toast(pr ? '¡PR! ' + fmtScore(r) + ' en ' + w.name : 'Apuntado: ' + fmtScore(r) + ' en ' + w.name);
-    if (state.view === 'timer') { timerReset(); go('wod', { id: w.id }); }
+    if (state.view === 'timer') { closeSheet(); timerReset(); go('wod', { id: w.id }); }
+    else { dismissSheet(); render(); }
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
 function openWorkoutForm(existing, presetDate) {
@@ -1065,8 +1109,8 @@ async function saveWorkout(existingId) {
   });
   try {
     await state.store.set('workouts', w.id, w);
-    closeSheet(); toast(existing ? 'Entreno actualizado' : 'Entreno creado: ' + w.name);
-    go('wod', { id: w.id });
+    toast(existing ? 'Entreno actualizado' : 'Entreno creado: ' + w.name);
+    go('wod', { id: w.id });                 // go() cierra la hoja y sustituye su entrada
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
 function openNewAthlete(existing) {
@@ -1084,11 +1128,17 @@ async function saveAthlete(existingId) {
   if (name.length < 2) { err.textContent = 'Pon un nombre (mínimo 2 letras).'; $('#a-name').focus(); return; }
   if (state.athletes.some((a) => a.id !== existingId && a.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Ya hay un atleta con ese nombre.'; $('#a-name').focus(); return; }
   const existing = existingId ? athleteById(existingId) : null;
+  if (!existing && state.store.pull) {                    // por si alguien se ha dado de alta hace un momento
+    try { await state.store.pull(); } catch (e) { }
+    if (state.athletes.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
+      err.textContent = 'Alguien acaba de crear ese atleta. Elígelo en “¿Quién eres?”.'; return;
+    }
+  }
   const a = Object.assign({}, existing || {}, { id: existingId || uid(), name, color, createdAt: existing ? existing.createdAt : nowISO() });
   try {
     await state.store.set('athletes', a.id, a);
     if (!existing) { state.athletes = state.athletes.filter((x) => x.id !== a.id).concat([a]); setMe(a.id); }
-    closeSheet(); toast(existing ? 'Atleta actualizado' : '¡Bienvenido, ' + a.name + '!'); render();
+    dismissSheet(); toast(existing ? 'Atleta actualizado' : '¡Bienvenido, ' + a.name + '!'); render();
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
 function openPickAthlete() {
@@ -1124,8 +1174,18 @@ function importData() {
 /* ============================================================
    Navegación y acciones
    ============================================================ */
-function go(view, params) {
+function go(view, params, desdeAtras) {
+  if ($('#sheet-root').firstChild) closeSheet();   // se cierra sin tocar el historial...
   state.view = view; state.params = params || {}; state.expanded = null;
+  if (!desdeAtras) {
+    try {
+      const st = { view: view, params: state.params };
+      /* ...y su entrada del historial se sustituye por la pantalla de destino,
+         para que el atrás no se quede en una hoja que ya no existe. */
+      if (history.state && history.state.sheet) history.replaceState(st, '');
+      else history.pushState(st, '');
+    } catch (e) { }
+  }
   window.scrollTo(0, 0);
   render();
 }
@@ -1144,22 +1204,22 @@ const ACTIONS = {
   'pick-athlete': () => openPickAthlete(),
   'new-athlete': () => openNewAthlete(),
   'edit-athlete': (el) => openNewAthlete(athleteById(el.dataset.id)),
-  'select-athlete': (el) => { setMe(el.dataset.id); closeSheet(); toast('Ahora eres ' + (athleteById(el.dataset.id) || { name: '?' }).name); render(); },
+  'select-athlete': (el) => { setMe(el.dataset.id); dismissSheet(); toast('Ahora eres ' + (athleteById(el.dataset.id) || { name: '?' }).name); render(); },
   'pick-color': (el) => { $$('.color-picks button').forEach((b) => b.setAttribute('aria-pressed', b === el)); },
   'save-athlete': (el) => saveAthlete(el.dataset.id || null),
   'delete-athlete': async (el) => {
     const a = athleteById(el.dataset.id); if (!a) return;
     const n = state.results.filter((r) => r.athleteId === a.id).length;
     if (await confirmSheet('Borrar atleta', '¿Borrar a ' + a.name + '? ' + (n ? 'Sus ' + n + ' resultados dejarán de contar en la clasificación.' : ''))) {
-      await state.store.remove('athletes', a.id); if (state.meId === a.id) setMe(null); toast('Atleta borrado'); render();
-    } else closeSheet();
+      await state.store.remove('athletes', a.id); if (state.meId === a.id) setMe(null); dismissSheet(); toast('Atleta borrado'); render();
+    } else dismissSheet();
   },
   'new-workout': (el) => openWorkoutForm(null, el.dataset.date || ''),
   'edit-workout': (el) => { const w = state.workouts.find((x) => x.id === el.dataset.id); if (w) openWorkoutForm(w); },
   'delete-workout': async (el) => {
     const w = state.workouts.find((x) => x.id === el.dataset.id); if (!w) return;
-    if (await confirmSheet('Borrar entreno', '¿Borrar “' + w.name + '”? Los resultados ya apuntados se conservan.')) { await state.store.remove('workouts', w.id); closeSheet(); toast('Entreno borrado'); go('wods'); }
-    else closeSheet();
+    if (await confirmSheet('Borrar entreno', '¿Borrar “' + w.name + '”? Los resultados ya apuntados se conservan.')) { toast('Entreno borrado'); await state.store.remove('workouts', w.id); go('wods'); }
+    else dismissSheet();
   },
   'save-workout': (el) => saveWorkout(el.dataset.id || null),
   'w-type-change': () => {
@@ -1177,11 +1237,11 @@ const ACTIONS = {
   'save-result': () => saveResult(),
   'delete-result': async (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
-    if (await confirmSheet('Borrar resultado', '¿Borrar ' + fmtScore(r) + ' de ' + r.workoutName + '?')) { await state.store.remove('results', r.id); closeSheet(); toast('Resultado borrado'); render(); }
-    else closeSheet();
+    if (await confirmSheet('Borrar resultado', '¿Borrar ' + fmtScore(r) + ' de ' + r.workoutName + '?')) { await state.store.remove('results', r.id); dismissSheet(); toast('Resultado borrado'); render(); }
+    else dismissSheet();
   },
-  'close-sheet': () => closeSheet(),
-  'sheet-backdrop': (el, e) => { if (e.target === el) closeSheet(); },
+  'close-sheet': () => dismissSheet(),
+  'sheet-backdrop': (el, e) => { if (e.target === el) dismissSheet(); },
   'confirm-yes': () => { const f = pendingConfirm; pendingConfirm = null; if (f) f(true); },
   'confirm-no': () => { const f = pendingConfirm; pendingConfirm = null; if (f) f(false); },
   'timer-for': (el) => { const w = getWorkout(el.dataset.id); if (timer.status !== 'idle') timerReset(); timerApplyWorkout(w); go('timer'); },
@@ -1204,12 +1264,16 @@ const ACTIONS = {
     openLogResult(w ? w.id : null, pre);
   },
   'gh-token': () => openTokenSheet(),
-  'gh-save-token': () => {
+  'gh-save-token': async (el) => {
     const t = $('#gh-tok').value.trim(); const err = $('#gh-error');
     if (t.length < 20) { err.textContent = 'Eso no parece un código de acceso de GitHub.'; return; }
-    state.store.setToken(t); closeSheet(); toast('Conectando con la nube…'); render();
+    err.textContent = 'Comprobando el código…'; el.disabled = true;
+    const r = await state.store.checkToken(t);
+    el.disabled = false;
+    if (!r.ok) { err.textContent = r.motivo; return; }
+    state.store.setToken(t); dismissSheet(); toast('Conectado: ya compartes tus marcas'); render();
   },
-  'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); closeSheet(); render(); } else closeSheet(); },
+  'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
   'export': () => exportData(),
   'import': () => importData(),
@@ -1239,10 +1303,16 @@ async function boot() {
     if (e.target.id === 'wod-search') { state.search = e.target.value; const l = $('#wod-list'); if (l) l.innerHTML = wodListHtml(); }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('#sheet-root').firstChild) closeSheet();
+    if (e.key === 'Escape' && $('#sheet-root').firstChild) dismissSheet();
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.closest('.sheet')) { const btn = $('.sheet-foot .btn.primary'); if (btn && e.target.type !== 'number') { e.preventDefault(); btn.click(); } }
   });
   $$('#tabbar .tab').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
+  try { history.replaceState({ view: 'home', params: {} }, ''); } catch (e) { }
+  window.addEventListener('popstate', (e) => {          // el atrás del móvil cierra la hoja o vuelve atrás en la app
+    if ($('#sheet-root').firstChild) { closeSheet(); return; }
+    const st = e.state;
+    if (st && st.view) go(st.view, st.params, true);
+  });
   window.addEventListener('beforeunload', (e) => { if (timer.status === 'running' || timer.status === 'prep') { e.preventDefault(); e.returnValue = ''; } });
 
   state.meId = readMe();

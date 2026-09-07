@@ -208,6 +208,44 @@ async function vaciarNube() {
   await alex.click('Ranking', '.tab'); await sleep(800);
   await alex.shot(path.join(SHOTS, 'a-ranking-alex.png'));
 
+  /* ---------------- 6.b Botón atrás del móvil ---------------- */
+  console.log('\n== ATRÁS DEL MÓVIL');
+  await alex.click('Entrenos', '.tab'); await sleep(700);
+  await alex.click('Girls', '.segmented button'); await sleep(600);
+  await alex.click('Fran', '.row'); await sleep(800);
+  check(/Pizarra|PIZARRA/.test(await alex.text()), 'se abre la ficha de Fran');
+  await alex.eval('history.back(); return 1;'); await sleep(1000);
+  const trasAtras = await alex.text();
+  check(/HÉROES|GIRLS|NUESTROS|Héroes/.test(trasAtras), 'el atrás vuelve a la lista de entrenos, no sale de la app');
+  await alex.click('Hoy', '.tab'); await sleep(600);
+  await alex.click('Apuntar'); await sleep(800);
+  check(await alex.eval("return !!document.querySelector('.sheet')"), 'se abre la hoja de apuntar');
+  await alex.eval('history.back(); return 1;'); await sleep(900);
+  check(!(await alex.eval("return !!document.querySelector('.sheet')")), 'el atrás cierra la hoja');
+  check(/Llorones|LLORONES/.test(await alex.all()), 'y seguimos dentro de la app');
+
+  /* ---------------- 6.c Código de acceso equivocado ---------------- */
+  console.log('\n== CÓDIGO DE ACCESO EQUIVOCADO');
+  const malo = new Phone('Malo', 9339, {});
+  await malo.start();
+  await malo.go(APP);
+  await malo.eval("localStorage.clear(); sessionStorage.clear(); return 1;");
+  await malo.go(APP); await sleep(7000);
+  check(/Álex/.test(await malo.all()), 'sin código ya ve las marcas de la cuadrilla');
+  await malo.eval("closeSheet(); return 1;"); await sleep(400);
+  await malo.click('Perfil', '.tab'); await sleep(700);
+  await malo.click('Pegar código de acceso'); await sleep(700);
+  await malo.type('#gh-tok', 'github_pat_11ESTONOVALE000000000000000000000000000000000000');
+  await malo.clickSel('[data-action="gh-save-token"]');
+  await sleep(4000);
+  const err = await malo.eval("return (document.querySelector('#gh-error')||{}).textContent || ''");
+  check(/no vale|caducado/i.test(err), 'avisa de que el código no vale: "' + err.trim() + '"');
+  check(await malo.eval("return !!document.querySelector('.sheet')"), 'la hoja sigue abierta para volver a intentarlo');
+  check(await malo.eval("return !localStorage.getItem('llorones:gh_token')"), 'no guarda el código malo');
+  await malo.eval("closeSheet(); return 1;"); await sleep(500);
+  check(/Álex/.test(await malo.all()), 'y sigue viendo las marcas de todos');
+  await malo.stop();
+
   /* ---------------- 7. Un amigo con el enlace, sin código ---------------- */
   console.log('\n== AMIGO NUEVO (web publicada, sin código de acceso)');
   const amigo = new Phone('Amigo', 9336, {});
