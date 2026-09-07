@@ -48,6 +48,8 @@
   --font-display: "Bebas Neue", "Oswald", "Arial Narrow", Impact, sans-serif;
   --font-body: "Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-cond: "Barlow Condensed", "Barlow", "Arial Narrow", sans-serif;
+  --wordmark: #14170f;
+  --oro: #a37800;
   --tab-h: 64px;
   color-scheme: light;
 }
@@ -77,6 +79,8 @@
     --bad: #f04a3e;
     --shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --wordmark: #ffffff;
+    --oro: #f5c542;
     color-scheme: dark;
   }
 }
@@ -105,6 +109,8 @@
   --bad: #f04a3e;
   --shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --wordmark: #ffffff;
+  --oro: #f5c542;
   color-scheme: dark;
 }
 
@@ -175,11 +181,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 .brand .wordmark {
   font-family: var(--font-display);
   font-size: 28px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   line-height: 1;
-  color: var(--text);
+  color: var(--wordmark);
 }
-.brand .wordmark em { font-style: normal; color: var(--accent); }
+.brand .wordmark em { font-style: normal; color: var(--oro); }
 .brand .crew {
   font-family: var(--font-cond);
   font-size: 13px;
@@ -709,7 +715,7 @@ details[open] > summary::after { content: "–"; }
 <div class="app" id="app">
   <header class="topbar">
     <div class="brand">
-      <span class="wordmark">Llo<em>rones</em></span>
+      <span class="wordmark">Ll<em>oro</em>nes</span>
       <span class="crew" id="brand-crew">Cuadrilla</span>
     </div>
     <button class="me-chip" id="me-chip" data-action="pick-athlete" aria-label="Cambiar de atleta"></button>
