@@ -56,9 +56,17 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json` | Catálogo incrustado en el build |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
+| `test/live5.js` | Prueba en vivo: cinco móviles (Chrome headless) usan la app y publican en la nube |
+| `test/drive.js`, `test/shots.js` | Utilidades de esas pruebas y generador de capturas |
 
 ```bash
 node build.js && node test/sync.test.js
 ```
+
+La prueba en vivo (`node test/live5.js`) abre cinco Chrome sin ventana, cada uno con su
+propio almacenamiento, y hace de cinco personas: se dan de alta, apuntan marcas, crean un
+entreno, usan el cronómetro y comprueban que todos ven lo de los demás. **Vacía la nube al
+empezar**, así que solo se ejecuta a propósito; necesita `gh_token.txt` en la raíz (no se
+sube: está en `.gitignore`) y la app servida en `http://127.0.0.1:8765`.
 
 Al cambiar algo: editar `src/`, ejecutar el build, subir `index.html` a `main`. Pages publica en un minuto. La rama `data` solo la toca la app.

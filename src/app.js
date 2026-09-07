@@ -185,6 +185,14 @@ class GitHubStore {
       const j = await r.json();
       return { doc: JSON.parse(b64ToUtf8(j.content)), sha: j.sha };
     }
+    /* Sin código de acceso: la API pública devuelve la copia recién publicada
+       (60 peticiones por hora y IP). Si no está disponible se usa el fichero en
+       bruto, que puede ir hasta cinco minutos por detrás. */
+    try {
+      const a = await fetch(this._apiPath() + '?ref=' + encodeURIComponent(c.branch) + '&t=' + Date.now(), { headers: { Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
+      if (a.status === 404) return { doc: null, sha: null };
+      if (a.ok) return { doc: await a.json(), sha: null };
+    } catch (e) { /* sin red o límite alcanzado: se prueba con el fichero en bruto */ }
     const r = await fetch('https://raw.githubusercontent.com/' + c.owner + '/' + c.repo + '/' + c.branch + '/' + c.path + '?t=' + Date.now(), { cache: 'no-store' });
     if (r.status === 404) return { doc: null, sha: null };
     if (!r.ok) throw new Error('GitHub respondió ' + r.status);
@@ -247,7 +255,7 @@ class GitHubStore {
   }
   start() {
     this.pull();
-    setInterval(() => { if (!document.hidden && !this.sync.busy) this.pull(); }, 60000);
+    setInterval(() => { if (!document.hidden && !this.sync.busy) this.pull(); }, this.token ? 60000 : 180000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.pull(); });
     window.addEventListener('online', () => this.pull());
   }
