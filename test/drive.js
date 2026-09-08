@@ -44,6 +44,10 @@ class Phone {
           if (m.method === 'Runtime.exceptionThrown') this.consoleErrors = (this.consoleErrors || []).concat([m.params.exceptionDetails.text]);
         };
         await this.send('Page.enable'); await this.send('Runtime.enable');
+        if (this.opts.sinNube) {   // pruebas aisladas: que el móvil no vea la nube del club
+          await this.send('Network.enable');
+          await this.send('Network.setBlockedURLs', { urls: ['*api.github.com*', '*raw.githubusercontent.com*', '*github.com*'] });
+        }
         await this.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: this.opts.theme || 'dark' }] });
         await this.send('Emulation.setDeviceMetricsOverride', { width: 430, height: 932, deviceScaleFactor: 2, mobile: true });
         res();

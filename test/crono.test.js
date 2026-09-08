@@ -53,8 +53,8 @@ async function movil(nombre, port, opts) {
   check(m.relojAlto > m.vh * 0.25, 'el reloj se ve grande (' + m.relojAlto + ' px de alto, fuente ' + m.relojFuente + ')');
   check(/^\d+:\d\d$/.test(m.texto.trim()), 'el reloj está contando: ' + m.texto.trim());
   check(await p.eval("return !!document.querySelector('.crono-capa [data-action=\"timer-round\"]')"), 'el botón +1 ronda está dentro de la capa');
-  await p.click('+1 ronda'); await sleep(600);
-  check((await p.eval("return document.querySelector('#round-val').textContent")) === '1', 'y funciona: 1 ronda');
+  await p.click('+1 ronda'); await sleep(900);
+  check(/1 ronda/.test(await p.eval("return document.querySelector('#tsub').textContent")), 'y funciona: el reloj marca 1 ronda');
   await p.clickSel('.crono-salir'); await sleep(700);
   check(!(await p.eval("return !!document.querySelector('.crono-capa')")), 'la X sale de la pantalla completa sin parar el crono');
   check(await p.eval("return timer.status === 'running'"), 'el crono sigue corriendo');

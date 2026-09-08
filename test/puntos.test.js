@@ -16,7 +16,7 @@ function marca(athleteId, wod, cat, scoreType, campos, rx) {
 }
 
 (async () => {
-  const p = new Phone('Puntos', 9601, { theme: 'dark' });
+  const p = new Phone('Puntos', 9601, { theme: 'dark', sinNube: true });
   await p.start();
   await p.go(APP);
 

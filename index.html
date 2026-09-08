@@ -389,6 +389,7 @@ main {
 .badge.custom { background: color-mix(in srgb, var(--plate-yellow) 22%, transparent); color: color-mix(in srgb, var(--plate-yellow) 70%, var(--text)); }
 .badge.rx { background: var(--accent); color: var(--accent-ink); }
 .badge.pr { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.badge.admin { background: color-mix(in srgb, var(--plate-blue) 20%, transparent); color: var(--plate-blue); }
 .badge.nocuenta { background: color-mix(in srgb, var(--warn) 22%, transparent); color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
 .badge.today { background: var(--accent-soft); color: var(--accent-strong); }
 .badge.type { background: var(--surface-3); color: var(--text); }
@@ -598,7 +599,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
   line-height: 1.45;
 }
 .meta-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--muted); font-size: 13px; }
-.wod-lb li { display: grid; grid-template-columns: 26px auto 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; }
+.wod-lb li { display: grid; grid-template-columns: 26px auto 1fr auto auto; gap: 10px; align-items: center; padding: 8px 12px; }
 .wod-lb .pos { font-family: var(--font-display); font-size: 20px; color: var(--muted); }
 .wod-lb .pos.p1 { color: var(--pos1); }
 .wod-lb .pos.p2 { color: var(--pos2); }
@@ -702,8 +703,8 @@ details[open] > summary::after { content: "–"; }
   inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 6px;
+  padding: 6px;
 }
 /* Con el móvil en vertical se gira todo sobre el centro de la pantalla, para
    verlo grande al ponerlo de lado. */
@@ -718,14 +719,27 @@ details[open] > summary::after { content: "–"; }
     transform: translate(-50%, -50%) rotate(90deg);
   }
 }
-.crono-capa .timer-stage { flex: 1; border-radius: var(--radius); position: relative; }
-.crono-capa .timer-stage .clock { font-size: min(46vw, 34vh); }
-@media (orientation: portrait) {
-  .crono-capa .timer-stage .clock { font-size: min(46vh, 34vw); }
+.crono-capa .timer-stage {
+  flex: 1;
+  border-radius: var(--radius);
+  position: relative;
+  padding: 8px 10px;
+  gap: 0;
+  min-height: 0;
 }
-.crono-capa .timer-stage .clock.small { font-size: min(34vw, 26vh); }
-.crono-capa .round-counter, .crono-capa .timer-controls { margin: 0; }
-.crono-capa .timer-controls .btn.big { min-height: 54px; }
+.crono-capa .timer-stage .state { font-size: 15px; letter-spacing: 0.2em; }
+.crono-capa .timer-stage .sub { font-size: clamp(16px, 4vmin, 26px); }
+.crono-capa .timer-stage .wod-name { font-size: 13px; }
+/* El tamaño real lo calcula ajustaReloj(); esto es solo el punto de partida. */
+.crono-capa .timer-stage .clock,
+.crono-capa .timer-stage .clock.small { font-size: 30vh; line-height: 0.82; }
+.crono-capa .timer-controls.barra {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  flex: none;
+}
+.crono-capa .timer-controls.barra .btn { flex: 1; min-height: 48px; font-size: 17px; padding: 8px 10px; }
 .crono-salir {
   position: absolute;
   top: 8px; right: 8px;
@@ -835,7 +849,10 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.5.0';
+/* Quien montó el club manda desde el principio. Después puede nombrar a más
+   admins desde Perfil, y eso queda guardado en el propio atleta. */
+const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
 const APP_NAME = 'Llorones Crossfit Club';
 const CREW_NAME = 'Crossfit Club';
 
@@ -908,6 +925,42 @@ function initials(name) {
 }
 const COLORS = ['red', 'blue', 'yellow', 'green', 'white', 'black'];
 const COLOR_LABEL = { red: 'Disco rojo · 25 kg', blue: 'Disco azul · 20 kg', yellow: 'Disco amarillo · 15 kg', green: 'Disco verde · 10 kg', white: 'Disco blanco · 5 kg', black: 'Disco negro' };
+/* ---- PIN opcional de cada atleta ----
+   El PIN no es una contraseña de verdad (son cuatro números y su huella viaja
+   con los datos del club), así que al menos se guarda derivado con PBKDF2 y sal
+   propia, para que no baste una tabla para adivinarlo. */
+const PIN_VUELTAS = 210000;
+const hex = (bytes) => Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+const deHex = (h) => new Uint8Array((String(h).match(/../g) || []).map((x) => parseInt(x, 16)));
+async function hashPinSimple(pin, id) {
+  const datos = new TextEncoder().encode('llorones:' + id + ':' + String(pin));
+  const buf = await crypto.subtle.digest('SHA-256', datos);
+  return hex(new Uint8Array(buf));
+}
+async function creaPin(pin, id) {
+  if (!(window.crypto && crypto.subtle)) return { v: 0, hash: 'plano:' + id + ':' + pin };
+  const sal = crypto.getRandomValues(new Uint8Array(16));
+  return { v: 2, sal: hex(sal), hash: await derivaPin(pin, id, sal) };
+}
+async function derivaPin(pin, id, sal) {
+  const enc = new TextEncoder();
+  const clave = await crypto.subtle.importKey('raw', enc.encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+  const etiqueta = enc.encode('llorones:' + id + ':');
+  const mezcla = new Uint8Array(etiqueta.length + sal.length);
+  mezcla.set(etiqueta, 0); mezcla.set(sal, etiqueta.length);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: mezcla, iterations: PIN_VUELTAS, hash: 'SHA-256' }, clave, 256);
+  return hex(new Uint8Array(bits));
+}
+async function compruebaPin(pin, a) {
+  if (!a || !a.pin) return false;
+  if (typeof a.pin === 'string') return (await hashPinSimple(pin, a.id)) === a.pin;   // formato antiguo
+  if (a.pin.v === 0) return a.pin.hash === 'plano:' + a.id + ':' + pin;
+  return (await derivaPin(pin, a.id, deHex(a.pin.sal))) === a.pin.hash;
+}
+function tienePin(a) { return !!(a && a.pin); }
+function pinValidado(id) { try { return sessionStorage.getItem(LS_PREFIX + 'pin:' + id) === '1'; } catch (e) { return false; } }
+function marcaPinValidado(id) { try { sessionStorage.setItem(LS_PREFIX + 'pin:' + id, '1'); } catch (e) { } }
+
 function stripUndefined(o) { const r = {}; for (const k in o) if (o[k] !== undefined) r[k] = o[k]; return r; }
 
 /* ============================================================
@@ -1178,6 +1231,15 @@ const state = {
   promptedProfile: false,
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
+/* ---- quién puede qué (dentro de la app) ---- */
+function esAdmin(a) { return !!a && (a.admin === true || ADMINS_INICIALES.indexOf(a.id) >= 0); }
+function soyAdmin() { return esAdmin(me()); }
+function soyYo(id) { const m = me(); return !!m && m.id === id; }
+function puedoEditarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
+function puedoBorrarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
+function puedoBorrarResultado(r) { return !!r && (soyAdmin() || soyYo(r.athleteId)); }
+function puedoEditarEntreno(w) { return !!w && w.category === 'custom' && (soyAdmin() || (w.createdBy && soyYo(w.createdBy))); }
+function noPuedes(quePasa) { toast(quePasa || 'Eso solo lo puede hacer quien administra el club', true); }
 const me = () => athleteById(state.meId);
 
 function readMe() {
@@ -1442,6 +1504,7 @@ function icon(name) {
     pen: '<path d="M4 20h4l10-10-4-4L4 16zM13 7l4 4"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    expandir: '<path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/>',
   }[name] || '';
   return '<svg viewBox="0 0 24 24" aria-hidden="true">' + p + '</svg>';
 }
@@ -1623,7 +1686,7 @@ function viewWod() {
   const lines = String(w.description || '').split('\n');
   let html = '<div class="view">' +
     '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="wods">' + icon('back') + 'Entrenos</button>' +
-    (w.category === 'custom' ? '<span class="btn-row"><button class="btn ghost sm" data-action="edit-workout" data-id="' + esc(w.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost sm danger" data-action="delete-workout" data-id="' + esc(w.id) + '">' + icon('trash') + '</button></span>' : '') + '</div>' +
+    (puedoEditarEntreno(w) ? '<span class="btn-row"><button class="btn ghost sm" data-action="edit-workout" data-id="' + esc(w.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost sm danger" data-action="delete-workout" data-id="' + esc(w.id) + '">' + icon('trash') + '</button></span>' : '') + '</div>' +
     '<section class="card"><div class="meta-line">' + catBadge(w.category) + workoutMeta(w).map((b) => badge('type', b)).join('') + (w.scheduledDate ? badge('today', fmtDate(w.scheduledDate)) : '') + '</div>' +
     '<h1 class="h-display h1">' + esc(w.name) + '</h1>' +
     (w.honoree ? '<p class="muted small">' + esc(w.honoree) + '</p>' : '') +
@@ -1647,7 +1710,7 @@ function viewWod() {
   if (board.length) {
     html += '<ul class="list wod-lb" style="border:0">' + board.map((r, i) => {
       const a = athleteById(r.athleteId);
-      return '<li><span class="pos p' + (i + 1) + '">' + (i + 1) + '</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span></li>';
+      return '<li><span class="pos p' + (i + 1) + '">' + (i + 1) + '</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (soyAdmin() && !soyYo(r.athleteId) ? '<button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<p class="muted">Nadie lo ha hecho todavía. Sé el primero en la pizarra.</p>';
@@ -1733,7 +1796,8 @@ function viewProfile() {
   if (m) {
     html += '<section class="card"><div class="profile-head">' + avatar(m, 'lg') + '<div><span class="eyebrow">Atleta</span><div class="nm">' + esc(m.name) + '</div></div></div>' +
       '<div class="stat-strip"><div class="stat"><span class="v">' + (mine ? mine.count : 0) + '</span><span class="l">Entrenos</span></div><div class="stat"><span class="v">' + (mine ? mine.prs : 0) + '</span><span class="l">PRs</span></div><div class="stat"><span class="v">' + (mine ? mine.total : 0) + '</span><span class="l">Puntos</span></div></div>' +
-      '<div class="btn-row"><button class="btn" data-action="edit-athlete" data-id="' + esc(m.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost" data-action="pick-athlete">Cambiar de atleta</button></div></section>' +
+      '<div class="btn-row"><button class="btn" data-action="edit-athlete" data-id="' + esc(m.id) + '">' + icon('pen') + (tienePin(m) ? 'Editar · PIN puesto' : 'Editar y poner PIN') + '</button><button class="btn ghost" data-action="pick-athlete">Cambiar de atleta</button></div>' +
+      (esAdmin(m) ? '<div class="banner live"><span class="dot"></span><span>Administras el club' + (tienePin(m) ? '.' : ': pon un PIN para que nadie se ponga tu nombre.') + '</span></div>' : '') + '</section>' +
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="rx"><div class="section-head"><h2 class="h-display h2">Mis Rx</h2><span class="chev">' + icon('chev') + '</span></div>' +
       '<p class="muted small">Tus cargas y tu nivel en cada movimiento: ' + MOVIMIENTOS.filter((x) => rxTexto(x, misRx(m)[x.id])).length + ' de ' + MOVIMIENTOS.length + ' puestos.</p></button>';
   } else {
@@ -1741,11 +1805,19 @@ function viewProfile() {
   }
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">La cuadrilla</h2><button class="link" data-action="new-athlete">+ Nuevo atleta</button></div>';
   if (state.athletes.length) {
-    html += '<div class="athlete-grid">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => '<button class="athlete-card" data-action="select-athlete" data-id="' + esc(a.id) + '" aria-pressed="' + (a.id === state.meId) + '" aria-label="' + esc(a.name) + '">' + avatar(a, 'lg') + '<span class="nm">' + esc(a.name) + '</span><span class="small muted">' + (rows.find((r) => r.athlete.id === a.id) || { total: 0 }).total + ' pts</span></button>').join('') + '</div>';
+    html += '<div class="athlete-grid">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => '<button class="athlete-card" data-action="select-athlete" data-id="' + esc(a.id) + '" aria-pressed="' + (a.id === state.meId) + '" aria-label="' + esc(a.name) + '">' + avatar(a, 'lg') + '<span class="nm">' + esc(a.name) + (tienePin(a) ? ' 🔒' : '') + '</span><span class="small muted">' + (rows.find((r) => r.athlete.id === a.id) || { total: 0 }).total + ' pts' + (esAdmin(a) ? ' · admin' : '') + '</span></button>').join('') + '</div>';
   } else {
     html += '<p class="muted">Todavía no hay nadie apuntado.</p>';
   }
   html += '</section>';
+  if (soyAdmin()) {
+    html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Administración</h2><span class="badge admin">Admin</span></div>' +
+      '<p class="small muted">Puedes editar o borrar a cualquiera y nombrar más administradores. El resto solo puede tocar lo suyo: su nombre, sus marcas y los entrenos que haya creado.</p>' +
+      '<ul class="list" style="border:0">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) =>
+        '<li><div class="row"><span>' + avatar(a, 'sm') + '</span><span><span class="title">' + esc(a.name) + (tienePin(a) ? ' 🔒' : '') + '</span><span class="sub">' + (esAdmin(a) ? 'Administra el club' : 'Atleta') + (soyYo(a.id) ? ' · eres tú' : '') + '</span></span>' +
+        '<button class="btn ghost sm" data-action="edit-athlete" data-id="' + esc(a.id) + '">' + icon('pen') + 'Editar</button></div></li>').join('') + '</ul>' +
+      '<p class="faint small">Esto ordena quién toca qué dentro de la app, pero no es un candado: todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede saltárselo editando los datos en GitHub. Entre amigos sobra; para más, haría falta un servidor.</p></section>';
+  }
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Nube</h2></div>';
   if (mode === 'github') {
     const y = state.store.status();
@@ -1764,7 +1836,7 @@ function viewProfile() {
   } else {
     html += '<div class="banner"><span class="dot"></span><span>Modo local: los datos solo están en este dispositivo.</span></div>';
   }
-  html += '<div class="btn-row"><button class="btn ghost" data-action="export">Exportar copia</button><button class="btn ghost" data-action="import">Importar copia</button></div></section>';
+  html += '<div class="btn-row"><button class="btn ghost" data-action="export">Exportar copia</button>' + (soyAdmin() ? '<button class="btn ghost" data-action="import">Importar copia</button>' : '') + '</div></section>';
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Ajustes</h2></div>' +
     '<label class="check"><input type="checkbox" data-action="toggle-sound" ' + (state.sound ? 'checked' : '') + '> Pitidos del cronómetro</label>' +
     '<p class="faint small">' + APP_NAME + ' v' + APP_VERSION + ' · ' + HEROES.length + ' Hero WODs y ' + GIRLS.length + ' Girls de crossfit.com</p></section>';
@@ -1891,7 +1963,7 @@ function timerTick() {
   if (timer.mode === 'fortime') {
     if (total && e >= total) { timerFinish('cap'); return; }
     if (total && newSec && total - whole <= 3 && total - whole > 0) beepShort();
-    setStage('work', total ? 'For time · cap ' + fmtTime(total) : 'For time', fmtTime(whole), timer.rounds ? timer.rounds + ' rondas' : 'Tiempo corriendo');
+    setStage('work', total ? 'For time · cap ' + fmtTime(total) : 'For time', fmtTime(whole), timer.rounds ? timer.rounds + ' vuelta' + (timer.rounds === 1 ? '' : 's') : 'Tiempo corriendo');
   } else if (timer.mode === 'amrap') {
     const rem = total - e;
     if (rem <= 0) { timerFinish('time'); return; }
@@ -1915,12 +1987,40 @@ function timerTick() {
     setStage(work ? 'work' : 'rest', (work ? 'TRABAJO' : 'DESCANSO') + ' · ' + (idx + 1) + ' de ' + c.tabRounds, String(rem), 'total ' + fmtTime(whole));
   }
 }
+/* A pantalla completa el reloj se mide y se estira hasta llenar el hueco que
+   queda dentro del marco, sin salirse ni por ancho ni por alto. */
+function ajustaReloj() {
+  const st = $('#tstage'), ck = $('#clock');
+  if (!st || !ck) return;
+  if (!st.closest('.crono-capa')) { ck.style.fontSize = ''; return; }   // fuera de pantalla completa manda el CSS
+  const cs = getComputedStyle(st);
+  const hueco = st.clientHeight - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
+  const ancho = st.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+  const gap = parseFloat(cs.rowGap || cs.gap || 0) || 0;
+  let otros = 0, hermanos = 0;
+  Array.prototype.forEach.call(st.children, (el) => {
+    if (el === ck || getComputedStyle(el).position === 'absolute') return;
+    otros += el.offsetHeight; hermanos++;
+  });
+  const alto = Math.max(40, hueco - otros - gap * hermanos);
+  const libre = Math.max(40, ancho);
+  ck.style.fontSize = '100px';
+  const w = ck.scrollWidth || 100;
+  const h = ck.offsetHeight || ck.scrollHeight || 100;
+  const escala = Math.min(libre / w, alto / h);
+  ck.style.fontSize = Math.max(28, Math.floor(100 * escala)) + 'px';
+  timer.relojLen = (ck.textContent || '').length;
+}
 function setStage(cls, stateText, clock, sub, big) {
   const st = $('#tstage'); if (!st) return;
   st.className = 'timer-stage ' + cls;
   $('#tstate').textContent = stateText;
-  const ck = $('#clock'); ck.textContent = clock; ck.className = 'clock' + (big || clock.length <= 2 ? '' : clock.length > 5 ? ' small' : '');
+  const ck = $('#clock');
+  const cambiaAncho = (ck.textContent || '').length !== clock.length;
+  ck.textContent = clock; ck.className = 'clock' + (big || clock.length <= 2 ? '' : clock.length > 5 ? ' small' : '');
+  const subAntes = $('#tsub').textContent;
   $('#tsub').textContent = sub || '';
+  if (cambiaAncho || subAntes !== (sub || '') || timer.relojLen == null) ajustaReloj();
 }
 function timerModeLabel() {
   const c = timer.cfg;
@@ -1961,14 +2061,22 @@ function viewTimer() {
     const capa = enMarcha && timer.full;
     if (capa) html += '<div class="crono-capa"><div class="crono-giro">';
     html += '<div class="timer-stage" id="tstage"><span class="state" id="tstate"></span><span class="clock" id="clock">' + (s === 'done' ? fmtTime(timer.finalSec) : '') + '</span><span class="sub" id="tsub"></span>' + (w ? '<span class="wod-name">' + esc(w.name) + '</span>' : '') +
-      (capa ? '<button class="crono-salir" data-action="timer-ventana" aria-label="Salir de pantalla completa">' + icon('x') + '</button>' : '') + '</div>';
+      '<button class="crono-salir" data-action="' + (capa ? 'timer-ventana' : 'timer-pantalla') + '" aria-label="' + (capa ? 'Salir de pantalla completa' : 'Ver a pantalla completa') + '">' + icon(capa ? 'x' : 'expandir') + '</button>' + '</div>';
     if (s === 'prep') {
       html += '<div class="timer-controls"><button class="btn big" data-action="timer-skip">Saltar cuenta atrás</button><button class="btn ghost big" data-action="timer-reset">Cancelar</button></div>';
     } else if (s === 'running' || s === 'paused') {
       const showRounds = timer.mode === 'fortime' || timer.mode === 'amrap';
-      html += (showRounds ? '<div class="round-counter"><span><span class="val" id="round-val">' + timer.rounds + '</span><span class="lbl">' + (timer.mode === 'amrap' ? 'rondas' : 'vueltas') + '</span></span><span class="laps" id="laps">' + lapsHtml() + '</span><button class="btn primary" data-action="timer-round">+1 ' + (timer.mode === 'amrap' ? 'ronda' : 'vuelta') + '</button></div>' : '') +
-        '<div class="timer-controls">' + (s === 'running' ? '<button class="btn big" data-action="timer-pause">Pausa</button>' : '<button class="btn primary big" data-action="timer-resume">Reanudar</button>') +
-        '<button class="btn danger big" data-action="timer-finish">Terminar</button>' + (s === 'paused' ? '<button class="btn ghost full" data-action="timer-reset">Reiniciar</button>' : '') + '</div>';
+      const rondaBtn = showRounds ? '<button class="btn primary big" data-action="timer-round">+1 ' + (timer.mode === 'amrap' ? 'ronda' : 'vuelta') + '</button>' : '';
+      if (capa) {
+        /* En pantalla completa manda el reloj: una sola barra de botones. */
+        html += '<div class="timer-controls barra">' + rondaBtn +
+          (s === 'running' ? '<button class="btn big" data-action="timer-pause">Pausa</button>' : '<button class="btn primary big" data-action="timer-resume">Reanudar</button>') +
+          '<button class="btn danger big" data-action="timer-finish">Terminar</button></div>';
+      } else {
+        html += (showRounds ? '<div class="round-counter"><span><span class="val" id="round-val">' + timer.rounds + '</span><span class="lbl">' + (timer.mode === 'amrap' ? 'rondas' : 'vueltas') + '</span></span><span class="laps" id="laps">' + lapsHtml() + '</span><button class="btn primary" data-action="timer-round">+1 ' + (timer.mode === 'amrap' ? 'ronda' : 'vuelta') + '</button></div>' : '') +
+          '<div class="timer-controls">' + (s === 'running' ? '<button class="btn big" data-action="timer-pause">Pausa</button>' : '<button class="btn primary big" data-action="timer-resume">Reanudar</button>') +
+          '<button class="btn danger big" data-action="timer-finish">Terminar</button>' + (s === 'paused' ? '<button class="btn ghost full" data-action="timer-reset">Reiniciar</button>' : '') + '</div>';
+      }
     } else if (s === 'done') {
       const endText = timer.endReason === 'cap' ? 'Time cap' : timer.endReason === 'time' ? 'Tiempo cumplido' : 'Terminado';
       const summary = timer.mode === 'amrap' ? timer.rounds + ' ronda' + (timer.rounds === 1 ? '' : 's') + ' completas' : timer.mode === 'fortime' ? (timer.endReason === 'cap' ? 'Se acabó el tiempo' : 'Tiempo final') : 'Sesión completada';
@@ -1981,9 +2089,11 @@ function viewTimer() {
 }
 function afterRenderTimer() {
   if (state.view !== 'timer') return;
+  timer.relojLen = null;
   if (timer.status === 'prep' || timer.status === 'running') timerTick();
   else if (timer.status === 'paused') { setStage('', 'En pausa', timer.mode === 'amrap' ? fmtTime(Math.ceil(timerTotal() - timer.acc)) : fmtTime(Math.floor(timer.acc)), timerModeLabel()); }
   else if (timer.status === 'done') { setStage('done', timer.endReason === 'cap' ? 'Time cap' : timer.endReason === 'time' ? 'Tiempo cumplido' : 'Terminado a los ' + fmtTime(timer.finalSec), timer.mode === 'amrap' ? (timer.rounds + ' rd') : fmtTime(timer.finalSec), timerModeLabel()); }
+  ajustaReloj();
 }
 
 /* ============================================================
@@ -2017,7 +2127,10 @@ function openLogResult(workoutId, pre) {
   if (!athletes.length) { openNewAthlete(); return; }
   const body =
     '<div class="field"><label for="f-wod">Entreno</label><select id="f-wod" data-action="log-wod-change">' + workoutOptions(w ? w.id : '') + '</select>' + (w ? '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · se puntúa por ' + esc(SCORE_LABEL[w.scoreType]) + '</span>' : '') + '</div>' +
-    '<div class="inline-fields"><div class="field"><label for="f-athlete">Atleta</label><select id="f-athlete">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select></div>' +
+    '<div class="inline-fields"><div class="field"><label for="f-athlete">Atleta</label>' +
+    (soyAdmin()
+      ? '<select id="f-athlete">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>'
+      : '<select id="f-athlete" disabled><option value="' + esc(state.meId || '') + '">' + esc((me() || { name: '—' }).name) + '</option></select>') + '</div>' +
     '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" value="' + esc(pre.date || todayISO()) + '" max="' + todayISO() + '"></div></div>' +
     '<div id="f-score">' + (w ? scoreFields(w.scoreType, pre) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
     '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx ? ' checked' : '') + '> Rx (tal cual está escrito, con las cargas prescritas)</label>' +
@@ -2034,8 +2147,8 @@ async function saveResult() {
   const err = $('#f-error'); err.textContent = '';
   const wid = $('#f-wod').value; const w = getWorkout(wid);
   if (!w) { err.textContent = 'Elige un entreno.'; return; }
-  const athleteId = $('#f-athlete').value; const date = $('#f-date').value;
-  if (!athleteById(athleteId)) { err.textContent = 'Elige un atleta.'; return; }
+  const athleteId = soyAdmin() ? $('#f-athlete').value : state.meId; const date = $('#f-date').value;
+  if (!athleteById(athleteId)) { err.textContent = 'Elige tu atleta antes de apuntar.'; return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = 'Pon una fecha válida.'; return; }
   if (date > todayISO()) { err.textContent = 'La fecha no puede ser futura.'; return; }
   const r = { id: uid(), athleteId, workoutId: w.id, workoutName: w.name, category: w.category, scoreType: w.scoreType, date, rx: $('#f-rx').checked, notes: $('#f-notes').value.trim(), createdAt: nowISO(), createdBy: state.meId || athleteId };
@@ -2096,6 +2209,7 @@ function workoutParams(w) {
 const DEFAULT_SCORE = { fortime: 'time', amrap: 'rounds', emom: 'reps', tabata: 'reps', interval: 'time', strength: 'load', other: 'reps' };
 async function saveWorkout(existingId) {
   const err = $('#w-error'); err.textContent = '';
+  if (existingId && !puedoEditarEntreno(state.workouts.find((x) => x.id === existingId))) { err.textContent = 'Ese entreno lo creó otra persona.'; return; }
   const name = $('#w-name').value.trim(); const type = $('#w-type').value; const scoreType = $('#w-score').value;
   const description = $('#w-desc').value.trim(); const scheduledDate = $('#w-date').value;
   if (!name) { err.textContent = 'Ponle un nombre al entreno.'; return; }
@@ -2121,15 +2235,22 @@ async function saveWorkout(existingId) {
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
 function openNewAthlete(existing) {
+  if (existing && !puedoEditarAtleta(existing)) { noPuedes('Solo puedes editar tu atleta'); return; }
   const a = existing || { name: '', color: COLORS[state.athletes.length % COLORS.length] };
   const body = (existing ? '' : (state.athletes.length ? '' : '<p class="muted">Bienvenido a ' + APP_NAME + '. Crea tu atleta para empezar a apuntar tiempos.</p>')) +
     '<div class="field"><label for="a-name">Nombre</label><input type="text" id="a-name" value="' + esc(a.name) + '" placeholder="Como te llaman en el box" maxlength="30"></div>' +
     '<div class="field"><span class="label">Tu disco</span><div class="color-picks">' + COLORS.map((c) => '<button type="button" data-action="pick-color" data-color="' + c + '" aria-pressed="' + (a.color === c) + '" aria-label="' + esc(COLOR_LABEL[c]) + '" title="' + esc(COLOR_LABEL[c]) + '" style="--c:var(--plate-' + (c === 'black' ? 'white' : c) + ')' + (c === 'black' ? ';background:#3a3f39' : '') + '"></button>').join('') + '</div></div>' +
+    (!existing || soyYo(existing.id)
+      ? '<div class="field"><label for="a-pin">PIN (opcional)</label><input type="password" id="a-pin" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="' + (tienePin(a) ? 'ya tienes uno: escribe otro para cambiarlo' : 'de 4 a 8 números') + '">' +
+        '<span class="hint">Con PIN, nadie más puede ponerse tu nombre en “¿Quién eres?” ni apuntar marcas por ti.' + (tienePin(a) ? ' <button type="button" class="link" data-action="quitar-pin" data-id="' + esc(a.id) + '">Quitar el PIN</button>' : '') + '</span></div>'
+      : '<div class="banner"><span class="dot"></span><span>' + (tienePin(a) ? esc(a.name) + ' tiene PIN. Solo puede cambiarlo o quitarlo ' + esc(a.name) + '.' : 'El PIN solo se lo puede poner cada uno.') + '</span></div>') +
+    (existing && soyAdmin() && !soyYo(existing.id) ? '<label class="check"><input type="checkbox" id="a-admin"' + (esAdmin(existing) ? ' checked' : '') + (ADMINS_INICIALES.indexOf(existing.id) >= 0 ? ' disabled' : '') + '> Puede administrar el club</label>' : '') +
     '<p class="form-error" id="a-error"></p>';
-  openSheet({ title: existing ? 'Editar atleta' : 'Nuevo atleta', body, foot: (existing ? '<button class="btn danger" data-action="delete-athlete" data-id="' + esc(existing.id) + '">' + icon('trash') + '</button>' : '') + '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-athlete" data-id="' + esc(existing ? existing.id : '') + '">Guardar</button>' });
+  openSheet({ title: existing ? 'Editar atleta' : 'Nuevo atleta', body, foot: (existing && puedoBorrarAtleta(existing) ? '<button class="btn danger" data-action="delete-athlete" data-id="' + esc(existing.id) + '">' + icon('trash') + '</button>' : '') + '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-athlete" data-id="' + esc(existing ? existing.id : '') + '">Guardar</button>' });
 }
 async function saveAthlete(existingId) {
   const err = $('#a-error'); err.textContent = '';
+  if (existingId && !puedoEditarAtleta(athleteById(existingId))) { err.textContent = 'Solo puedes editar tu atleta.'; return; }
   const name = $('#a-name').value.trim();
   const colorBtn = $('.color-picks [aria-pressed="true"]'); const color = colorBtn ? colorBtn.dataset.color : 'red';
   if (name.length < 2) { err.textContent = 'Pon un nombre (mínimo 2 letras).'; $('#a-name').focus(); return; }
@@ -2142,15 +2263,37 @@ async function saveAthlete(existingId) {
     }
   }
   const a = Object.assign({}, existing || {}, { id: existingId || uid(), name, color, createdAt: existing ? existing.createdAt : nowISO() });
+  /* Club recién estrenado: el primero que se da de alta administra, para que no
+     se quede nadie con los mandos. */
+  if (!existing && !state.athletes.some(esAdmin)) a.admin = true;
+  const campoPin = $('#a-pin');
+  if (campoPin && campoPin.value.trim()) {
+    if (existing && !soyYo(existing.id)) { err.textContent = 'El PIN solo se lo puede poner cada uno.'; return; }
+    const pin = campoPin.value.trim();
+    if (!/^\d{4,8}$/.test(pin)) { err.textContent = 'El PIN son de 4 a 8 números.'; return; }
+    a.pin = await creaPin(pin, a.id);
+    marcaPinValidado(a.id);
+  }
+  const campoAdmin = $('#a-admin');
+  if (campoAdmin && soyAdmin() && existing && !soyYo(existing.id)) a.admin = !!campoAdmin.checked;
   try {
     await state.store.set('athletes', a.id, a);
     if (!existing) { state.athletes = state.athletes.filter((x) => x.id !== a.id).concat([a]); setMe(a.id); }
     dismissSheet(); toast(existing ? 'Atleta actualizado' : '¡Bienvenido, ' + a.name + '!'); render();
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
+function openPinSheet(a) {
+  openSheet({
+    title: 'PIN de ' + a.name,
+    body: '<p class="small muted">' + esc(a.name) + ' ha puesto un PIN para que nadie apunte marcas en su nombre. Si eres ' + esc(a.name) + ', escríbelo.</p>' +
+      '<div class="field"><label for="pin-valor">PIN</label><input type="password" id="pin-valor" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••"></div>' +
+      '<p class="form-error" id="pin-error"></p>',
+    foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="pin-check" data-id="' + esc(a.id) + '">Entrar</button>',
+  });
+}
 function openPickAthlete() {
   if (!state.athletes.length) { openNewAthlete(); return; }
-  const body = '<p class="muted">¿Quién está usando este móvil? Los tiempos que apuntes contarán para ese atleta.</p><div class="athlete-grid">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => '<button class="athlete-card" data-action="select-athlete" data-id="' + esc(a.id) + '" aria-pressed="' + (a.id === state.meId) + '" aria-label="' + esc(a.name) + '">' + avatar(a, 'lg') + '<span class="nm">' + esc(a.name) + '</span></button>').join('') + '</div>';
+  const body = '<p class="muted">¿Quién está usando este móvil? Los tiempos que apuntes contarán para ese atleta.</p><div class="athlete-grid">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => '<button class="athlete-card" data-action="select-athlete" data-id="' + esc(a.id) + '" aria-pressed="' + (a.id === state.meId) + '" aria-label="' + esc(a.name) + '">' + avatar(a, 'lg') + '<span class="nm">' + esc(a.name) + (tienePin(a) ? ' 🔒' : '') + '</span></button>').join('') + '</div>';
   openSheet({ title: '¿Quién eres?', body, focus: false, foot: '<button class="btn" data-action="new-athlete">+ Soy nuevo</button>' });
 }
 function openTokenSheet() {
@@ -2166,6 +2309,8 @@ function openTokenSheet() {
 }
 function exportData() {
   const data = state.store.exportAll(); delete data.deleted;
+  /* Las huellas de los PIN no salen del club en una copia. */
+  Object.keys(data.athletes || {}).forEach((id) => { if (data.athletes[id]) { data.athletes[id] = Object.assign({}, data.athletes[id]); delete data.athletes[id].pin; } });
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'llorones-' + todayISO() + '.json'; document.body.appendChild(a); a.click(); a.remove();
   toast('Copia exportada');
@@ -2217,22 +2362,76 @@ const ACTIONS = {
   'pick-athlete': () => openPickAthlete(),
   'new-athlete': () => openNewAthlete(),
   'edit-athlete': (el) => openNewAthlete(athleteById(el.dataset.id)),
-  'select-athlete': (el) => { setMe(el.dataset.id); dismissSheet(); toast('Ahora eres ' + (athleteById(el.dataset.id) || { name: '?' }).name); render(); },
+  'select-athlete': (el) => {
+    const a = athleteById(el.dataset.id);
+    if (!a) return;
+    if (tienePin(a) && !soyYo(a.id) && !pinValidado(a.id)) { openPinSheet(a); return; }
+    setMe(a.id); dismissSheet(); toast('Ahora eres ' + a.name); render();
+  },
+  'pin-check': async (el) => {
+    const a = athleteById(el.dataset.id); const err = $('#pin-error');
+    const pin = ($('#pin-valor').value || '').trim();
+    if (!a) return;
+    if (!/^\d{4,8}$/.test(pin)) { err.textContent = 'El PIN son de 4 a 8 números.'; return; }
+    const boton = el;
+    boton.disabled = true; err.textContent = 'Comprobando…';
+    const vale = await compruebaPin(pin, a);
+    boton.disabled = false;
+    if (!vale) {
+      state.pinFallos = (state.pinFallos || 0) + 1;
+      err.textContent = 'Ese PIN no es el de ' + a.name + '.' + (state.pinFallos >= 3 ? ' Llevas ' + state.pinFallos + ' intentos.' : '');
+      $('#pin-valor').value = '';
+      if (state.pinFallos >= 5) {           // a la quinta, un respiro para no ir probando a lo bruto
+        boton.disabled = true; err.textContent = 'Demasiados intentos. Espera unos segundos.';
+        setTimeout(() => { if ($('#pin-error')) { boton.disabled = false; $('#pin-error').textContent = ''; } }, 15000);
+      } else $('#pin-valor').focus();
+      return;
+    }
+    state.pinFallos = 0;
+    marcaPinValidado(a.id); setMe(a.id); dismissSheet(); toast('Ahora eres ' + a.name); render();
+  },
   'pick-color': (el) => { $$('.color-picks button').forEach((b) => b.setAttribute('aria-pressed', b === el)); },
   'save-athlete': (el) => saveAthlete(el.dataset.id || null),
+  'quitar-pin': async (el) => {
+    const a = athleteById(el.dataset.id);
+    if (!a || !soyYo(a.id)) { noPuedes('El PIN solo lo puede quitar su dueño'); return; }
+    const copia = Object.assign({}, a); delete copia.pin;
+    await state.store.set('athletes', a.id, copia);
+    dismissSheet(); toast('PIN quitado'); render();
+  },
   'delete-athlete': async (el) => {
     const a = athleteById(el.dataset.id); if (!a) return;
-    const n = state.results.filter((r) => r.athleteId === a.id).length;
-    if (await confirmSheet('Borrar atleta', '¿Borrar a ' + a.name + '? ' + (n ? 'Sus ' + n + ' resultados dejarán de contar en la clasificación.' : ''))) {
-      await state.store.remove('athletes', a.id); if (state.meId === a.id) setMe(null); dismissSheet(); toast('Atleta borrado'); render();
+    if (!puedoBorrarAtleta(a)) { noPuedes('Solo quien administra el club puede borrar a otros'); return; }
+    if (ADMINS_INICIALES.indexOf(a.id) >= 0) { noPuedes('A quien montó el club no se le puede borrar'); return; }
+    if (esAdmin(a) && state.athletes.filter(esAdmin).length <= 1) { noPuedes('Es la única persona que administra el club: nombra antes a otra'); return; }
+    const suyas = state.results.filter((r) => r.athleteId === a.id);
+    if (await confirmSheet('Borrar atleta', '¿Borrar a ' + a.name + '?' + (suyas.length ? ' Se borrarán también sus ' + suyas.length + ' marca' + (suyas.length === 1 ? '' : 's') + '.' : ''))) {
+      for (const r of suyas) await state.store.remove('results', r.id);
+      await state.store.remove('athletes', a.id);
+      if (state.meId === a.id) setMe(null);
+      dismissSheet(); toast('Atleta borrado'); render();
     } else dismissSheet();
   },
-  'new-workout': (el) => openWorkoutForm(null, el.dataset.date || ''),
-  'edit-workout': (el) => { const w = state.workouts.find((x) => x.id === el.dataset.id); if (w) openWorkoutForm(w); },
+  'new-workout': (el) => {
+    if (!me()) { openPickAthlete(); return; }      // sin atleta el entreno nacería sin dueño
+    openWorkoutForm(null, el.dataset.date || '');
+  },
+  'edit-workout': (el) => {
+    const w = state.workouts.find((x) => x.id === el.dataset.id);
+    if (!w) return;
+    if (!puedoEditarEntreno(w)) { noPuedes('Ese entreno lo creó otra persona'); return; }
+    openWorkoutForm(w);
+  },
   'delete-workout': async (el) => {
     const w = state.workouts.find((x) => x.id === el.dataset.id); if (!w) return;
-    if (await confirmSheet('Borrar entreno', '¿Borrar “' + w.name + '”? Los resultados ya apuntados se conservan.')) { toast('Entreno borrado'); await state.store.remove('workouts', w.id); go('wods'); }
-    else dismissSheet();
+    if (!puedoEditarEntreno(w)) { noPuedes('Ese entreno lo creó otra persona'); return; }
+    const marcas = state.results.filter((r) => r.workoutId === w.id);
+    const ajenas = marcas.filter((r) => !soyYo(r.athleteId)).length;
+    if (ajenas && !soyAdmin()) { noPuedes('Hay ' + ajenas + ' marca' + (ajenas === 1 ? '' : 's') + ' de otra gente en ese entreno: que lo borre quien administra el club'); return; }
+    if (await confirmSheet('Borrar entreno', '¿Borrar “' + w.name + '”?' + (marcas.length ? ' Se borrarán también las ' + marcas.length + ' marca' + (marcas.length === 1 ? '' : 's') + ' apuntadas' + (ajenas ? ' (' + ajenas + ' de otras personas)' : '') + '.' : ''))) {
+      for (const r of marcas) await state.store.remove('results', r.id);
+      toast('Entreno borrado'); await state.store.remove('workouts', w.id); go('wods');
+    } else dismissSheet();
   },
   'save-workout': (el) => saveWorkout(el.dataset.id || null),
   'w-type-change': () => {
@@ -2250,6 +2449,7 @@ const ACTIONS = {
   'save-result': () => saveResult(),
   'delete-result': async (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
+    if (!puedoBorrarResultado(r)) { noPuedes('Solo puedes borrar tus marcas'); return; }
     if (await confirmSheet('Borrar resultado', '¿Borrar ' + fmtScore(r) + ' de ' + r.workoutName + '?')) { await state.store.remove('results', r.id); dismissSheet(); toast('Resultado borrado'); render(); }
     else dismissSheet();
   },
@@ -2267,7 +2467,8 @@ const ACTIONS = {
   'timer-resume': () => timerResume(),
   'timer-finish': () => timerFinish('manual'),
   'timer-reset': () => timerReset(),
-  'timer-ventana': () => { timer.full = false; pantallaCompleta(false); render(); },
+  'timer-ventana': () => { timer.full = false; localStorage.setItem(LS_PREFIX + 'full', 'off'); pantallaCompleta(false); render(); },
+  'timer-pantalla': () => { timer.full = true; localStorage.setItem(LS_PREFIX + 'full', 'on'); pantallaCompleta(true); render(); },
   'timer-round': () => timerRound(),
   'timer-save': () => {
     const w = timer.workoutId ? getWorkout(timer.workoutId) : null;
@@ -2316,7 +2517,7 @@ const ACTIONS = {
     await state.store.update('athletes', m.id, { rx });
   },
   'export': () => exportData(),
-  'import': () => importData(),
+  'import': () => { if (!soyAdmin()) { noPuedes('Importar una copia cambia los datos de todos: solo quien administra el club'); return; } importData(); },
   'toggle-full': (el) => { timer.full = el.checked; localStorage.setItem(LS_PREFIX + 'full', timer.full ? 'on' : 'off'); },
   'toggle-sound': (el) => { state.sound = el.checked; localStorage.setItem(LS_PREFIX + 'sound', state.sound ? 'on' : 'off'); if (state.sound) beepShort(); },
 };
@@ -2354,6 +2555,8 @@ async function boot() {
     const st = e.state;
     if (st && st.view) go(st.view, st.params, true);
   });
+  window.addEventListener('resize', () => { if (state.view === 'timer') ajustaReloj(); });
+  if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => setTimeout(ajustaReloj, 250));
   window.addEventListener('beforeunload', (e) => { if (timer.status === 'running' || timer.status === 'prep') { e.preventDefault(); e.returnValue = ''; } });
 
   state.meId = readMe();

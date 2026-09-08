@@ -49,6 +49,34 @@ El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor
 
 Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. Un mismo entreno solo suma una vez al día; las marcas extra de ese día solo cuentan para el PR. Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
 
+## Quién puede qué
+
+La app tiene un **administrador** (quien montó el club; puede nombrar a más desde Perfil → Editar de cada atleta). El reparto es este:
+
+| | Cualquiera | Admin |
+|---|---|---|
+| Crearse su atleta, apuntar y borrar **sus** marcas, poner sus Rx | ✔ | ✔ |
+| Cambiar **su** nombre, disco y PIN | ✔ | ✔ |
+| Crear entrenos y editar o borrar **los suyos** | ✔ | ✔ |
+| Editar o borrar a **otro** atleta | ✘ | ✔ |
+| Borrar marcas de **otro** | ✘ | ✔ |
+| Editar o borrar entrenos de **otro** | ✘ | ✔ |
+| Nombrar administradores | ✘ | ✔ |
+| Cambiar o quitar el PIN de otro | ✘ | ✘ (ni el admin) |
+| Importar una copia (cambia los datos de todos) | ✘ | ✔ |
+
+Al apuntar una marca, quien no es admin solo puede hacerlo a su nombre: el selector de atleta queda fijado en él.
+
+Dos reglas más para que el club no se rompa: **el primero que se da de alta en un club vacío queda como administrador** (si no, nadie podría serlo nunca), y **no se puede borrar al último administrador**. Al borrar un atleta o un entreno propio se avisa de cuántas marcas se van con él y se borran también, para no dejar marcas fantasma puntuando.
+
+### PIN
+
+Como la app no tiene contraseñas, cualquiera podría ponerse el nombre de otro en "¿Quién eres?". Para evitarlo, cada uno puede ponerse un **PIN** de 4 a 8 números en **Perfil → Editar**. Con PIN puesto, para usar ese atleta hay que escribirlo (sale un 🔒 junto al nombre). **Al admin le conviene tenerlo**, porque es el único cerrojo entre un atleta normal y el mando del club.
+
+El PIN solo lo pone y lo quita su dueño: ni el admin puede tocarlo. Se guarda derivado con PBKDF2 (210.000 vueltas y sal propia), nunca en claro, y no sale en las copias exportadas. Aun así son cuatro números y su huella viaja con los datos del club: **no lo trates como una contraseña de verdad**, trátalo como el candado de la taquilla.
+
+Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un candado**. Todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede editar los datos directamente en GitHub. Para impedirlo de verdad haría falta un servidor, que es justo lo que este montaje evita.
+
 ## Movimientos y Rx de cada uno
 
 **Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos del catálogo) agrupados por barra, mancuerna y kettlebell, balón y lastre, cajón, gimnásticos, cardio y otros. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, escalado o todavía no, y una nota libre en los de cardio.

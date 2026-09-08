@@ -374,6 +374,7 @@ main {
 .badge.custom { background: color-mix(in srgb, var(--plate-yellow) 22%, transparent); color: color-mix(in srgb, var(--plate-yellow) 70%, var(--text)); }
 .badge.rx { background: var(--accent); color: var(--accent-ink); }
 .badge.pr { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.badge.admin { background: color-mix(in srgb, var(--plate-blue) 20%, transparent); color: var(--plate-blue); }
 .badge.nocuenta { background: color-mix(in srgb, var(--warn) 22%, transparent); color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
 .badge.today { background: var(--accent-soft); color: var(--accent-strong); }
 .badge.type { background: var(--surface-3); color: var(--text); }
@@ -583,7 +584,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
   line-height: 1.45;
 }
 .meta-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--muted); font-size: 13px; }
-.wod-lb li { display: grid; grid-template-columns: 26px auto 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; }
+.wod-lb li { display: grid; grid-template-columns: 26px auto 1fr auto auto; gap: 10px; align-items: center; padding: 8px 12px; }
 .wod-lb .pos { font-family: var(--font-display); font-size: 20px; color: var(--muted); }
 .wod-lb .pos.p1 { color: var(--pos1); }
 .wod-lb .pos.p2 { color: var(--pos2); }
@@ -687,8 +688,8 @@ details[open] > summary::after { content: "–"; }
   inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 6px;
+  padding: 6px;
 }
 /* Con el móvil en vertical se gira todo sobre el centro de la pantalla, para
    verlo grande al ponerlo de lado. */
@@ -703,14 +704,27 @@ details[open] > summary::after { content: "–"; }
     transform: translate(-50%, -50%) rotate(90deg);
   }
 }
-.crono-capa .timer-stage { flex: 1; border-radius: var(--radius); position: relative; }
-.crono-capa .timer-stage .clock { font-size: min(46vw, 34vh); }
-@media (orientation: portrait) {
-  .crono-capa .timer-stage .clock { font-size: min(46vh, 34vw); }
+.crono-capa .timer-stage {
+  flex: 1;
+  border-radius: var(--radius);
+  position: relative;
+  padding: 8px 10px;
+  gap: 0;
+  min-height: 0;
 }
-.crono-capa .timer-stage .clock.small { font-size: min(34vw, 26vh); }
-.crono-capa .round-counter, .crono-capa .timer-controls { margin: 0; }
-.crono-capa .timer-controls .btn.big { min-height: 54px; }
+.crono-capa .timer-stage .state { font-size: 15px; letter-spacing: 0.2em; }
+.crono-capa .timer-stage .sub { font-size: clamp(16px, 4vmin, 26px); }
+.crono-capa .timer-stage .wod-name { font-size: 13px; }
+/* El tamaño real lo calcula ajustaReloj(); esto es solo el punto de partida. */
+.crono-capa .timer-stage .clock,
+.crono-capa .timer-stage .clock.small { font-size: 30vh; line-height: 0.82; }
+.crono-capa .timer-controls.barra {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  flex: none;
+}
+.crono-capa .timer-controls.barra .btn { flex: 1; min-height: 48px; font-size: 17px; padding: 8px 10px; }
 .crono-salir {
   position: absolute;
   top: 8px; right: 8px;
