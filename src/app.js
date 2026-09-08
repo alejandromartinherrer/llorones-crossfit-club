@@ -79,8 +79,10 @@ function withKg(s) {
   return String(s).replace(/(\d+(?:\.\d+)?)(?:-lb\b|\s?lbs?\b)/g, (all, n) => n + ' lb (' + Math.round(Number(n) * 0.4536) + ' kg)');
 }
 function initials(name) {
-  const p = String(name || '?').trim().split(/\s+/);
-  return (p[0][0] + (p[1] ? p[1][0] : '')).toUpperCase();
+  /* Solo letras: los emojis del nombre no deben romper la inicial del disco. */
+  const letra = (w) => (Array.from(w || '').find((ch) => /\p{L}/u.test(ch)) || '').toUpperCase();
+  const palabras = String(name || '?').trim().split(/\s+/).filter((w) => /\p{L}/u.test(w));
+  return (letra(palabras[0]) + letra(palabras[1])) || '?';
 }
 const COLORS = ['red', 'blue', 'yellow', 'green', 'white', 'black'];
 const COLOR_LABEL = { red: 'Disco rojo · 25 kg', blue: 'Disco azul · 20 kg', yellow: 'Disco amarillo · 15 kg', green: 'Disco verde · 10 kg', white: 'Disco blanco · 5 kg', black: 'Disco negro' };
