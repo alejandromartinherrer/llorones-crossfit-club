@@ -13,8 +13,6 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 - Cada cambio se sube a los pocos segundos; la app se descarga la copia de la nube al abrirse, al volver a primer plano, al recuperar conexión y cada minuto. Si dos personas apuntan a la vez no se pierde nada: las copias se **fusionan por id** (gana la modificación más reciente; los borrados también se propagan).
 - Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
 - Si el código caduca o se pega mal, la app **sigue enseñando las marcas de todos** (la lectura es pública) y avisa de que las tuyas no se están compartiendo.
-- Detalle: quien entra **sin código** puede ver la pizarra hasta unos minutos desfasada si la lectura pública cae en la copia en caché de GitHub. Con código va siempre al día.
-- **Aviso de caducidad**: la app sabe cuándo caduca el código (GitHub lo dice en cada respuesta) y avisa en la pantalla Hoy las tres últimas semanas. Cuando ya ha caducado, lo dice claramente y explica que hay que crear uno nuevo y repartirlo. En **Perfil → Nube** se ve siempre la fecha.
 
 ### Crear el código de acceso (lo hace quien administra el club, una vez)
 
@@ -23,7 +21,7 @@ Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json
 3. **Resource owner**: deja tu propia cuenta (`alejandromartinherrer`). Si eliges una organización, el repositorio del club no aparecerá en la lista.
 4. **Expiration**: elige **Custom** y pon una fecha; el máximo con fecha son 366 días. GitHub también ofrece **No expiration**, pero no la uses: que caduque es parte de la seguridad de este montaje.
 5. **Repository access**: marca **Only select repositories** y, en el desplegable **Select repositories** que aparece debajo, busca y marca `llorones-crossfit-club`.
-6. **Permissions**, pestaña **Repositories**: pulsa **+ Add permissions**, busca **Contents** en el buscador que se abre y selecciónalo; después, en la fila que aparece, pon el acceso en **Read and write**. GitHub añade solo **Metadata: Read-only** (no se puede quitar), así que el contador quedará en **Repositories 2**. La pestaña **Account** se queda en 0.
+6. **Permissions → Repository permissions**: busca **Contents** y ponlo en **Read and write**. No hace falta nada más; GitHub añade solo **Metadata: Read-only**, que aparece marcado y no se puede quitar.
 7. Pulsa **Generate token**. El código (empieza por `github_pat_`) **solo se muestra una vez**: cópialo en ese momento y pásaselo a la cuadrilla. Si cierras la página sin copiarlo, no se puede recuperar y hay que generar otro.
 
 Cada uno lo pega en **Perfil → Nube → Pegar código de acceso**. La app lo comprueba contra GitHub antes de guardarlo: si está mal o ha caducado te lo dice y conserva el que tuvieras.
@@ -34,24 +32,32 @@ Si la rama `data` desapareciera, la app intenta recrearla sola desde `main`; tam
 
 ## Cómo se puntúa
 
+Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
+
 | Concepto | Puntos |
 |---|---|
-| Apuntar un entreno (un mismo entreno solo cuenta una vez al día) | 10 |
+| Apuntar una marca válida (una marca en cero no cuenta) | 5 |
+| **Rendimiento**: tu marca frente a la mejor del club en ese entreno | hasta 40 |
+| Tener la mejor marca del club en ese entreno | +5 |
 | Hacerlo Rx | +5 |
 | Hero WOD | +10 |
 | Benchmark (Girls) | +5 |
 | Mejorar tu marca (PR) | +5 |
-| 1.º / 2.º / 3.º de la pizarra de ese entreno (si lo han hecho 2 o más) | 15 / 10 / 6 |
-| A partir del 4.º | 3 |
 | Semana activa (3 días o más con entreno) | +5 |
 
-Cuenta la mejor marca de cada atleta en cada entreno; Rx siempre queda por delante de scaled. Los puntos se recalculan en vivo. Periodos: semana, mes y temporada (todo).
+El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor marca del club se lleva los 40 y el resto la parte proporcional. La mitad de rondas, la mitad de kilos o el doble de tiempo son la mitad de puntos. Así 20 rondas no valen lo mismo que 2, ni 10 minutos lo mismo que 20.
+
+Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. Un mismo entreno solo suma una vez al día; las marcas extra de ese día solo cuentan para el PR. Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
+
+## Movimientos y Rx de cada uno
+
+**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos del catálogo) agrupados por barra, mancuerna y kettlebell, balón y lastre, cajón, gimnásticos, cardio y otros. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, escalado o todavía no, y una nota libre en los de cardio.
+
+En la ficha de cada entreno, la sección **Tus Rx aquí** detecta los movimientos que aparecen en ese WOD y enseña tus cargas, para saber de un vistazo con qué peso vas y si te sale Rx.
 
 ## Cronómetro
 
 For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
-
-Al darle a **Empezar** se pone a **pantalla completa en horizontal**, con el reloj a tamaño de pizarra de box y los botones de ronda, pausa y terminar a mano. En Android se pide la pantalla completa al sistema y se bloquea la orientación; en iPhone eso no se puede, así que la app gira el contenido y basta con poner el móvil de lado. La X de la esquina vuelve a la vista normal sin parar el crono, y el ajuste se puede desactivar en la propia pantalla del cronómetro.
 
 ## Datos
 
@@ -64,16 +70,11 @@ Al darle a **Empezar** se pone a **pantalla completa en horizontal**, con el rel
 |---|---|
 | `index.html` | La app completa, generada por `build.js` |
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
-| `data/heroes.json`, `data/girls.json` | Catálogo incrustado en el build |
+| `data/heroes.json`, `data/girls.json`, `data/movimientos.json` | Catálogos incrustados en el build |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/live5.js` | Prueba en vivo: cinco móviles (Chrome sin ventana) usan la app y publican en la nube |
-| `test/crono.test.js` | Zoom por doble toque, cronómetro a pantalla completa y avisos de caducidad |
-| `test/drive.js`, `test/shots.js` | Utilidades de esa prueba y generador de capturas |
 
 ```bash
 node build.js && node test/sync.test.js
 ```
-
-`node test/live5.js` hace la prueba completa con cinco personas: **vacía la nube al empezar**, así que solo se lanza a propósito; necesita `gh_token.txt` en la raíz (no se sube: está en `.gitignore`) y la app servida en `http://127.0.0.1:8765`.
 
 Al cambiar algo: editar `src/`, ejecutar el build, subir `index.html` a `main`. Pages publica en un minuto. La rama `data` solo la toca la app.

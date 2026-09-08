@@ -13,13 +13,14 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const APP_NAME = 'Llorones Crossfit Club';
 const CREW_NAME = 'Crossfit Club';
 
 /* Datos incrustados en el build */
 const HEROES = /*__HEROES__*/[];
 const GIRLS = /*__GIRLS__*/[];
+const MOVIMIENTOS = /*__MOVIMIENTOS__*/[];
 
 /* ============================================================
    Utilidades
@@ -407,6 +408,27 @@ function firstLine(w) {
   return moves || lines[0] || '';
 }
 
+/* --- validez: una marca a cero no cuenta --- */
+function marcaValida(r) {
+  if (!r) return false;
+  switch (r.scoreType) {
+    case 'time': return r.finished === false ? (r.reps || 0) > 0 : (r.seconds || 0) > 0;
+    case 'rounds': return (r.rounds || 0) > 0 || (r.reps || 0) > 0;
+    case 'reps': return (r.reps || 0) > 0;
+    case 'load': return (r.load || 0) > 0;
+    default: return false;
+  }
+}
+/* --- valor comparable dentro de un mismo entreno: cuanto más alto, mejor --- */
+function valorMarca(r) {
+  switch (r.scoreType) {
+    case 'time': return r.finished === false ? null : (r.seconds > 0 ? 1 / r.seconds : null);
+    case 'rounds': return (r.rounds || 0) + (r.reps || 0) / 1000;
+    case 'reps': return r.reps || 0;
+    case 'load': return r.load || 0;
+  }
+  return null;
+}
 /* --- comparación de resultados: negativo = a mejor que b --- */
 function compareResults(a, b) {
   const rx = (b.rx ? 1 : 0) - (a.rx ? 1 : 0);
@@ -442,39 +464,64 @@ function periodContains(period, iso) {
   return true;
 }
 const PERIOD_LABEL = { week: 'esta semana', month: 'este mes', season: 'la temporada' };
-const PODIUM_PTS = [15, 10, 6];
+const PTS = { marca: 5, rendimiento: 40, lider: 5, rx: 5, hero: 10, girl: 5, pr: 5, semana: 5 };
 const RULES = [
-  ['Apuntar un entreno', 10],
+  ['Apuntar una marca válida (cero no cuenta)', 5],
+  ['Rendimiento: tu marca frente a la mejor del club', 'hasta 40'],
+  ['Tener la mejor marca del club en ese entreno', '+5'],
   ['Hacerlo Rx', '+5'],
   ['Si es un Hero WOD', '+10'],
   ['Si es un benchmark (Girls)', '+5'],
   ['Mejorar tu marca (PR)', '+5'],
-  ['1.º / 2.º / 3.º de la pizarra de ese entreno', '15 / 10 / 6'],
-  ['A partir del 4.º (con 2+ atletas)', '3'],
   ['Semana activa (3 días o más)', '+5'],
 ];
 
+/* Rendimiento de cada atleta en un entreno: 0 a 1 comparando su mejor marca con
+   la mejor del club. Quien lo ha hecho solo se queda a la mitad hasta que otro lo
+   haga; una marca sin terminar (time cap) nunca pasa de la mitad. */
+function rendimientosDeEntreno(mejorPorAtleta) {
+  const ids = Object.keys(mejorPorAtleta);
+  const out = {};
+  const valores = {}, capReps = {};
+  ids.forEach((id) => {
+    const r = mejorPorAtleta[id];
+    const v = valorMarca(r);
+    if (v != null && v > 0) valores[id] = v;
+    else if (r.scoreType === 'time' && r.finished === false) capReps[id] = r.reps || 0;
+  });
+  const maxV = Math.max.apply(null, Object.values(valores).concat([0]));
+  const maxCap = Math.max.apply(null, Object.values(capReps).concat([0]));
+  const solo = ids.length < 2;
+  ids.forEach((id) => {
+    let ratio = 0;
+    if (valores[id] != null && maxV > 0) ratio = valores[id] / maxV;
+    else if (capReps[id] != null) ratio = 0.5 * (maxCap > 0 ? capReps[id] / maxCap : 1);
+    if (solo) ratio = ratio * 0.5;
+    out[id] = Math.max(0, Math.min(1, ratio));
+  });
+  return out;
+}
 function computeStandings(period) {
-  const valid = state.results.filter((r) => athleteById(r.athleteId));
+  const valid = state.results.filter((r) => athleteById(r.athleteId) && marcaValida(r));
   const inP = (r) => periodContains(period, r.date);
   const pr = valid.filter(inP);
   const per = {};
-  const ensure = (id) => (per[id] = per[id] || { base: 0, rx: 0, cat: 0, pr: 0, podium: 0, weeks: 0, total: 0, count: 0, prs: 0, wins: 0, podiums: 0 });
+  const ensure = (id) => (per[id] = per[id] || { base: 0, rend: 0, rx: 0, cat: 0, pr: 0, lider: 0, weeks: 0, total: 0, count: 0, results: 0, prs: 0, wins: 0 });
   const seen = new Set();
   pr.forEach((r) => {
     const p = ensure(r.athleteId); p.results = (p.results || 0) + 1;
     const k = r.athleteId + '|' + r.workoutId + '|' + r.date;
     if (seen.has(k)) return; seen.add(k);
     p.count++;
-    p.base += 10;
-    if (r.rx) p.rx += 5;
-    if (r.category === 'hero') p.cat += 10; else if (r.category === 'girl') p.cat += 5;
+    p.base += PTS.marca;
+    if (r.rx) p.rx += PTS.rx;
+    if (r.category === 'hero') p.cat += PTS.hero; else if (r.category === 'girl') p.cat += PTS.girl;
   });
   const chrono = valid.slice().sort((a, b) => (a.date + (a.createdAt || '')).localeCompare(b.date + (b.createdAt || '')));
   const best = {};
   chrono.forEach((r) => {
     const k = r.athleteId + '|' + r.workoutId; const prev = best[k];
-    if (prev && compareResults(r, prev) < 0) { if (inP(r)) { const p = ensure(r.athleteId); p.pr += 5; p.prs++; } }
+    if (prev && compareResults(r, prev) < 0) { if (inP(r)) { const p = ensure(r.athleteId); p.pr += PTS.pr; p.prs++; } }
     if (!prev || compareResults(r, prev) < 0) best[k] = r;
   });
   const byWod = {};
@@ -482,23 +529,21 @@ function computeStandings(period) {
   Object.keys(byWod).forEach((wid) => {
     const bestBy = {};
     byWod[wid].forEach((r) => { if (!bestBy[r.athleteId] || compareResults(r, bestBy[r.athleteId]) < 0) bestBy[r.athleteId] = r; });
+    const rend = rendimientosDeEntreno(bestBy);
+    Object.keys(bestBy).forEach((id) => { ensure(id).rend += Math.round(PTS.rendimiento * rend[id]); });
     const ranked = Object.values(bestBy).sort(compareResults);
-    if (ranked.length < 2) return;
-    let pos = 0;
-    ranked.forEach((r, i) => {
-      if (i === 0 || compareResults(r, ranked[i - 1]) !== 0) pos = i;
-      const p = ensure(r.athleteId);
-      p.podium += pos < 3 ? PODIUM_PTS[pos] : 3;
-      if (pos === 0) p.wins++;
-      if (pos < 3) p.podiums++;
-    });
+    if (ranked.length >= 2) {
+      ranked.forEach((r, i) => {
+        if (i === 0 || compareResults(r, ranked[0]) === 0) { const p = ensure(r.athleteId); p.lider += PTS.lider; p.wins++; }
+      });
+    }
   });
   const days = {};
   pr.forEach((r) => { const k = r.athleteId + '|' + isoWeekKey(r.date); (days[k] = days[k] || new Set()).add(r.date); });
-  Object.keys(days).forEach((k) => { if (days[k].size >= 3) ensure(k.split('|')[0]).weeks += 5; });
+  Object.keys(days).forEach((k) => { if (days[k].size >= 3) ensure(k.split('|')[0]).weeks += PTS.semana; });
   const rows = state.athletes.map((a) => {
     const p = ensure(a.id);
-    p.total = p.base + p.rx + p.cat + p.pr + p.podium + p.weeks;
+    p.total = p.base + p.rend + p.rx + p.cat + p.pr + p.lider + p.weeks;
     return Object.assign({ athlete: a }, p);
   }).sort((x, y) => y.total - x.total || y.count - x.count || x.athlete.name.localeCompare(y.athlete.name));
   rows.forEach((r, i) => { r.pos = i > 0 && rows[i - 1].total === r.total ? rows[i - 1].pos : i + 1; });
@@ -506,7 +551,7 @@ function computeStandings(period) {
 }
 function wodBoard(workoutId) {
   const bestBy = {};
-  state.results.filter((r) => r.workoutId === workoutId && athleteById(r.athleteId)).forEach((r) => {
+  state.results.filter((r) => r.workoutId === workoutId && athleteById(r.athleteId) && marcaValida(r)).forEach((r) => {
     if (!bestBy[r.athleteId] || compareResults(r, bestBy[r.athleteId]) < 0) bestBy[r.athleteId] = r;
   });
   return Object.values(bestBy).sort(compareResults);
@@ -515,6 +560,41 @@ function isPR(result) {
   const prev = state.results.filter((r) => r.athleteId === result.athleteId && r.workoutId === result.workoutId && r.id !== result.id && (r.date + (r.createdAt || '')) < (result.date + (result.createdAt || '')));
   if (!prev.length) return false;
   return prev.every((p) => compareResults(result, p) < 0);
+}
+
+/* ============================================================
+   Movimientos y Rx personales
+   ============================================================ */
+const CATS_MOV = [
+  ['barra', 'Barra'],
+  ['mancuerna', 'Mancuerna y kettlebell'],
+  ['balon', 'Balón, saco y lastre'],
+  ['cajon', 'Cajón'],
+  ['gimnastico', 'Gimnásticos'],
+  ['cardio', 'Cardio'],
+  ['otros', 'Otros'],
+];
+const ESTADOS_MOV = [['rx', 'Rx'], ['escalado', 'Escalado'], ['no', 'Aún no']];
+function movById(id) { return MOVIMIENTOS.find((m) => m.id === id) || null; }
+function misRx(a) { return (a && a.rx) || {}; }
+function rxTexto(m, v) {
+  if (!v) return '';
+  if (m.tipo === 'kg') return v.kg ? v.kg + ' kg' : '';
+  if (m.tipo === 'cm') return v.cm ? v.cm + ' cm' : '';
+  if (m.tipo === 'estado') { const e = (ESTADOS_MOV.find((x) => x[0] === v.estado) || [])[1]; return e ? e + (v.nota ? ' · ' + v.nota : '') : (v.nota || ''); }
+  return v.nota || '';
+}
+/* Movimientos que aparecen en la descripción de un entreno. Se queda con el más
+   específico: "strict pull-ups" gana a "pull-ups". */
+function movimientosDe(w) {
+  const texto = ' ' + String(w.description || '').toLowerCase().replace(/\s+/g, ' ') + ' ';
+  const hallados = [];
+  MOVIMIENTOS.forEach((m) => {
+    let mejor = '';
+    m.en.forEach((alias) => { if (texto.indexOf(alias.toLowerCase()) >= 0 && alias.length > mejor.length) mejor = alias; });
+    if (mejor) hallados.push({ mov: m, alias: mejor });
+  });
+  return hallados.filter((h) => !hallados.some((o) => o !== h && o.alias.length > h.alias.length && o.alias.toLowerCase().indexOf(h.alias.toLowerCase()) >= 0)).map((h) => h.mov);
 }
 
 /* ============================================================
@@ -671,7 +751,7 @@ function viewHome() {
       const a = athleteById(r.athleteId);
       return '<li><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + r.workoutName + ', ' + fmtScore(r)) + '">' + avatar(a) +
         '<span><span class="what"><b>' + esc(a ? a.name : '?') + '</b> · ' + esc(r.workoutName) + '</span><br><span class="when">' + esc(relDate(r.date)) + (r.notes ? ' · ' + esc(r.notes) : '') + '</span></span>' +
-        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '') + '</span></span></button></li>';
+        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (!marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button></li>';
     }).join('') + '</ul>';
   } else {
     html += '<div class="empty"><span class="h-display h2">Pizarra en blanco</span><span>Apunta el primer tiempo de la cuadrilla.</span><button class="btn primary" data-action="log-result">Apuntar resultado</button></div>';
@@ -729,6 +809,16 @@ function viewWod() {
     '<div class="meta-line">' + (w.firstPosted ? '<span>Publicado por CrossFit en ' + esc(fmtPosted(w.firstPosted)) + '</span>' : '') + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener">crossfit.com ↗</a>' : '') + (w.createdBy && athleteById(w.createdBy) ? '<span>Creado por ' + esc(athleteById(w.createdBy).name) + '</span>' : '') + '</div>' +
     '<div class="btn-row">' + (w.scoreType !== 'load' ? '<button class="btn primary" data-action="timer-for" data-id="' + esc(w.id) + '">' + icon('timer') + 'Cronómetro</button>' : '') + '<button class="btn" data-action="log-result" data-id="' + esc(w.id) + '">Apuntar resultado</button></div>' +
     '</section>';
+  const movs = movimientosDe(w);
+  if (movs.length) {
+    const rx = misRx(m);
+    html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus Rx aquí</h2><button class="link" data-action="go" data-view="rx">Editar</button></div>' +
+      '<ul class="rx-chips">' + movs.map((x) => {
+        const t = rxTexto(x, rx[x.id]);
+        return '<li class="' + (t ? 'puesto' : '') + '"><span>' + esc(x.es) + '</span><b>' + esc(t || '—') + '</b></li>';
+      }).join('') + '</ul>' +
+      (m ? '' : '<p class="faint small">Elige tu atleta para ver tus cargas.</p>') + '</section>';
+  }
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Pizarra</h2><span class="eyebrow">' + esc(SCORE_LABEL[w.scoreType] || '') + '</span></div>';
   if (board.length) {
     html += '<ul class="list wod-lb" style="border:0">' + board.map((r, i) => {
@@ -742,7 +832,7 @@ function viewWod() {
   if (m) {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus marcas</h2></div>';
     if (mine.length) {
-      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '') + '</span><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></li>').join('') + '</ul>';
+      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (!marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></li>').join('') + '</ul>';
     } else {
       html += '<p class="muted">Todavía no tienes marca en este entreno.</p>';
     }
@@ -770,12 +860,43 @@ function viewRanking() {
       return '<li><button class="lb-row' + (s.athlete.id === state.meId ? ' me' : '') + '" data-action="expand" data-id="' + esc(s.athlete.id) + '" aria-expanded="' + open + '" aria-label="' + esc(s.athlete.name) + ', ' + s.total + ' puntos"><span class="pos">' + (s.count ? s.pos : '–') + '</span>' + avatar(s.athlete) +
         '<span><span class="title">' + esc(s.athlete.name) + '</span><br><span class="small muted">' + s.count + ' entreno' + (s.count === 1 ? '' : 's') + ((s.results || 0) > s.count ? ' (' + s.results + ' marcas)' : '') + ' · ' + s.prs + ' PR · ' + s.wins + ' victoria' + (s.wins === 1 ? '' : 's') + '</span></span>' +
         '<span class="pts">' + s.total + '<small>PTS</small></span></button>' +
-        (open ? '<div class="breakdown"><span>Entrenos apuntados</span><b>' + s.base + '</b><span>Rx</span><b>' + s.rx + '</b><span>Héroes y benchmarks</span><b>' + s.cat + '</b><span>PRs</span><b>' + s.pr + '</b><span>Podios (' + s.podiums + ')</span><b>' + s.podium + '</b><span>Semanas activas</span><b>' + s.weeks + '</b></div>' : '') + '</li>';
+        (open ? '<div class="breakdown"><span>Marcas apuntadas</span><b>' + s.base + '</b><span>Rendimiento</span><b>' + s.rend + '</b><span>Rx</span><b>' + s.rx + '</b><span>Héroes y benchmarks</span><b>' + s.cat + '</b><span>PRs</span><b>' + s.pr + '</b><span>Mejores del club (' + s.wins + ')</span><b>' + s.lider + '</b><span>Semanas activas</span><b>' + s.weeks + '</b></div>' : '') + '</li>';
     }).join('') + '</ul>';
   }
   html += '<details class="card"><summary><span class="eyebrow">Cómo se puntúa</span></summary><div class="rules" style="margin-top:10px">' + RULES.map((r) => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
-    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. Rx siempre queda por delante de scaled. Un mismo entreno solo suma una vez al día (base, Rx y bonus de héroe o benchmark); las marcas extra del mismo día solo cuentan para el PR. Los puntos se recalculan en vivo con los resultados del periodo.</p></details></div>';
+    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. El <b>rendimiento</b> compara tu marca con la mejor del club en ese entreno: quien la tiene se lleva los 40, y el resto la parte proporcional (la mitad de tiempo, la mitad de rondas o la mitad de kilos son la mitad de puntos). Si eres el único que lo ha hecho cuenta a la mitad, hasta que otro lo haga. Una marca sin terminar (time cap) no pasa de la mitad. Un mismo entreno solo suma una vez al día; las marcas extra de ese día solo cuentan para el PR. Los puntos se recalculan en vivo.</p></details></div>';
   return html;
+}
+
+/* --- MIS RX --- */
+function viewRx() {
+  const m = me();
+  if (!m) return '<div class="view"><div class="empty"><span class="h-display h2">¿Quién eres?</span><span>Elige tu atleta para guardar tus Rx.</span><button class="btn primary" data-action="pick-athlete">Elegir atleta</button></div></div>';
+  const rx = misRx(m);
+  const puestos = MOVIMIENTOS.filter((x) => rxTexto(x, rx[x.id])).length;
+  let html = '<div class="view">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow">' + puestos + ' de ' + MOVIMIENTOS.length + '</span></div>' +
+    '<section class="card"><span class="eyebrow">' + esc(m.name) + '</span><h1 class="h-display h2">Mis Rx</h1>' +
+    '<p class="muted small">Apunta con qué carga haces cada movimiento y cómo lo tienes. Es tuyo y solo tuyo: sirve para saber, de un vistazo, con qué peso vas en cada entreno y para no discutir si algo fue Rx.</p></section>';
+  CATS_MOV.forEach((c) => {
+    const lista = MOVIMIENTOS.filter((x) => x.cat === c[0]);
+    if (!lista.length) return;
+    html += '<section class="card"><div class="section-head"><h2 class="h-display h3">' + esc(c[1]) + '</h2></div><ul class="rx-list">' +
+      lista.map((x) => {
+        const v = rx[x.id] || {};
+        let control = '';
+        if (x.tipo === 'kg' || x.tipo === 'cm') {
+          control = '<input type="number" inputmode="decimal" min="0" step="' + (x.tipo === 'kg' ? '0.5' : '1') + '" value="' + esc(v[x.tipo] != null ? v[x.tipo] : '') + '" placeholder="—" data-action="rx-num" data-mov="' + esc(x.id) + '" data-campo="' + x.tipo + '" aria-label="' + esc(x.es) + ' en ' + x.tipo + '"><span class="ud">' + x.tipo + '</span>';
+        } else if (x.tipo === 'estado') {
+          control = '<select data-action="rx-estado" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.es) + '"><option value="">—</option>' +
+            ESTADOS_MOV.map((e) => '<option value="' + e[0] + '"' + (v.estado === e[0] ? ' selected' : '') + '>' + e[1] + '</option>').join('') + '</select>';
+        } else {
+          control = '<input type="text" maxlength="24" value="' + esc(v.nota || '') + '" placeholder="p. ej. 1 km en 4:10" data-action="rx-nota" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.es) + '">';
+        }
+        return '<li><span class="nm">' + esc(x.es) + '</span><span class="ctrl">' + control + '</span></li>';
+      }).join('') + '</ul></section>';
+  });
+  return html + '</div>';
 }
 
 /* --- PERFIL --- */
@@ -788,7 +909,9 @@ function viewProfile() {
   if (m) {
     html += '<section class="card"><div class="profile-head">' + avatar(m, 'lg') + '<div><span class="eyebrow">Atleta</span><div class="nm">' + esc(m.name) + '</div></div></div>' +
       '<div class="stat-strip"><div class="stat"><span class="v">' + (mine ? mine.count : 0) + '</span><span class="l">Entrenos</span></div><div class="stat"><span class="v">' + (mine ? mine.prs : 0) + '</span><span class="l">PRs</span></div><div class="stat"><span class="v">' + (mine ? mine.total : 0) + '</span><span class="l">Puntos</span></div></div>' +
-      '<div class="btn-row"><button class="btn" data-action="edit-athlete" data-id="' + esc(m.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost" data-action="pick-athlete">Cambiar de atleta</button></div></section>';
+      '<div class="btn-row"><button class="btn" data-action="edit-athlete" data-id="' + esc(m.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost" data-action="pick-athlete">Cambiar de atleta</button></div></section>' +
+      '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="rx"><div class="section-head"><h2 class="h-display h2">Mis Rx</h2><span class="chev">' + icon('chev') + '</span></div>' +
+      '<p class="muted small">Tus cargas y tu nivel en cada movimiento: ' + MOVIMIENTOS.filter((x) => rxTexto(x, misRx(m)[x.id])).length + ' de ' + MOVIMIENTOS.length + ' puestos.</p></button>';
   } else {
     html += '<section class="card"><span class="eyebrow">Atleta</span><h2 class="h-display h2">¿Quién eres?</h2><p class="muted">Elige tu atleta para que los tiempos que apuntes cuenten para ti.</p></section>';
   }
@@ -1096,7 +1219,7 @@ async function saveResult() {
     const capped = $('#f-capped').checked;
     if (capped) {
       const reps = Number($('#f-reps').value);
-      if (!(reps >= 0) || $('#f-reps').value === '') { err.textContent = 'Indica las reps completadas al llegar al cap.'; return; }
+      if (!(reps > 0) || $('#f-reps').value === '') { err.textContent = 'Indica las reps completadas al llegar al cap (si no hiciste ninguna, no hay marca que apuntar).'; return; }
       r.finished = false; r.reps = reps; r.seconds = w.timeCapMin ? w.timeCapMin * 60 : (readTime() || 0);
     } else {
       const sec = readTime();
@@ -1106,10 +1229,12 @@ async function saveResult() {
   } else if (w.scoreType === 'rounds') {
     const rounds = Number($('#f-rounds').value), reps = Number($('#f-reps').value || 0);
     if ($('#f-rounds').value === '' || !(rounds >= 0) || !(reps >= 0)) { err.textContent = 'Pon las rondas completas (y las reps de la última, si las hay).'; return; }
+    if (rounds + reps <= 0) { err.textContent = 'Una marca en cero no cuenta: pon al menos una ronda o unas repeticiones.'; return; }
     r.rounds = rounds; r.reps = reps;
   } else if (w.scoreType === 'reps') {
     const reps = Number($('#f-reps').value);
     if ($('#f-reps').value === '' || !(reps >= 0)) { err.textContent = 'Pon las reps totales.'; return; }
+    if (reps <= 0) { err.textContent = 'Una marca en cero no cuenta: pon las repeticiones que hiciste.'; return; }
     r.reps = reps;
   } else if (w.scoreType === 'load') {
     const load = Number($('#f-load').value);
@@ -1255,7 +1380,7 @@ function go(view, params, desdeAtras) {
 }
 function render() {
   renderTopbar(); renderTabs();
-  const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile };
+  const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx };
   $('#main').innerHTML = (views[state.view] || viewHome)();
   afterRenderTimer();
 }
@@ -1340,6 +1465,32 @@ const ACTIONS = {
   },
   'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
+  'rx-num': async (el) => {
+    const m = me(); if (!m) return;
+    const rx = Object.assign({}, misRx(m));
+    const v = Object.assign({}, rx[el.dataset.mov] || {});
+    const n = Number(el.value);
+    if (el.value === '' || !(n > 0)) delete v[el.dataset.campo]; else v[el.dataset.campo] = n;
+    if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
+    await state.store.update('athletes', m.id, { rx });
+  },
+  'rx-estado': async (el) => {
+    const m = me(); if (!m) return;
+    const rx = Object.assign({}, misRx(m));
+    const v = Object.assign({}, rx[el.dataset.mov] || {});
+    if (!el.value) delete v.estado; else v.estado = el.value;
+    if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
+    await state.store.update('athletes', m.id, { rx });
+  },
+  'rx-nota': async (el) => {
+    const m = me(); if (!m) return;
+    const rx = Object.assign({}, misRx(m));
+    const v = Object.assign({}, rx[el.dataset.mov] || {});
+    const t = el.value.trim();
+    if (!t) delete v.nota; else v.nota = t;
+    if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
+    await state.store.update('athletes', m.id, { rx });
+  },
   'export': () => exportData(),
   'import': () => importData(),
   'toggle-full': (el) => { timer.full = el.checked; localStorage.setItem(LS_PREFIX + 'full', timer.full ? 'on' : 'off'); },

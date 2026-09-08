@@ -374,6 +374,7 @@ main {
 .badge.custom { background: color-mix(in srgb, var(--plate-yellow) 22%, transparent); color: color-mix(in srgb, var(--plate-yellow) 70%, var(--text)); }
 .badge.rx { background: var(--accent); color: var(--accent-ink); }
 .badge.pr { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.badge.nocuenta { background: color-mix(in srgb, var(--warn) 22%, transparent); color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
 .badge.today { background: var(--accent-soft); color: var(--accent-strong); }
 .badge.type { background: var(--surface-3); color: var(--text); }
 
@@ -720,6 +721,32 @@ details[open] > summary::after { content: "–"; }
   display: grid; place-items: center;
 }
 .crono-salir svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
+/* ---------- mis Rx ---------- */
+.rx-list { display: flex; flex-direction: column; }
+.rx-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
+.rx-list li + li { border-top: 1px solid var(--line); }
+.rx-list .nm { font-size: 15px; }
+.rx-list .ctrl { display: flex; align-items: center; gap: 6px; }
+.rx-list input[type="number"] { width: 90px; min-height: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.rx-list input[type="text"] { width: 160px; min-height: 38px; }
+.rx-list select { min-height: 38px; width: 130px; }
+.rx-list .ud { font-family: var(--font-cond); font-size: 13px; color: var(--muted); width: 22px; }
+.rx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rx-chips li {
+  display: flex; align-items: baseline; gap: 6px;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; font-size: 14px; color: var(--muted);
+}
+.rx-chips li.puesto { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--text); }
+.rx-chips li b { font-family: var(--font-cond); font-weight: 700; color: var(--accent-strong); }
+.rx-chips li:not(.puesto) b { color: var(--faint); }
 
 /* ---------- perfil ---------- */
 .profile-head { display: flex; align-items: center; gap: 14px; }
