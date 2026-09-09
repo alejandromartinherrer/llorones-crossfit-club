@@ -101,11 +101,12 @@ function marca(athleteId, wod, cat, scoreType, campos, rx) {
   const cat = JSON.parse(await p.eval("return JSON.stringify({total: MOVIMIENTOS.length, cats: Array.from(new Set(MOVIMIENTOS.map(function(m){return m.cat;})))})"));
   console.log('   catálogo:', JSON.stringify(cat));
   check(cat.total >= 70, 'el catálogo tiene ' + cat.total + ' movimientos');
-  const detectados = JSON.parse(await p.eval("return JSON.stringify({fran: movimientosDe(getWorkout('girl:fran')).map(function(m){return m.es;}), murph: movimientosDe(getWorkout('hero:murph')).map(function(m){return m.es;}), dt: movimientosDe(getWorkout('hero:dt-new')).map(function(m){return m.es;})})"));
+  const detectados = JSON.parse(await p.eval("return JSON.stringify({fran: movimientosDe(getWorkout('girl:fran')).map(function(m){return m.nombre;}), murph: movimientosDe(getWorkout('hero:murph')).map(function(m){return m.nombre;}), dt: movimientosDe(getWorkout('hero:dt-new')).map(function(m){return m.nombre;})})"));
   console.log('   detectados:', JSON.stringify(detectados));
-  check(detectados.fran.join(',').includes('Thruster') && detectados.fran.join(',').includes('Dominadas'), 'en Fran detecta thruster y dominadas');
-  check(detectados.murph.some((x) => /Carrera/.test(x)) && detectados.murph.some((x) => /Flexiones$/.test(x)), 'en Murph detecta carrera y flexiones');
-  check(detectados.dt.some((x) => /Peso muerto/.test(x)), 'en DT detecta el peso muerto');
+  check(detectados.fran.includes('Thruster') && detectados.fran.includes('Pull-up'), 'en Fran detecta Thruster y Pull-up');
+  check(detectados.murph.includes('Run') && detectados.murph.includes('Push-up') && detectados.murph.includes('Air squat'), 'en Murph detecta Run, Push-up y Air squat');
+  check(detectados.dt.includes('Deadlift') && detectados.dt.includes('Push jerk'), 'en DT detecta Deadlift y Push jerk');
+  check(detectados.fran.concat(detectados.murph, detectados.dt).every((x) => !/[áéíóúñ¿]/i.test(x)), 'todos los nombres van en inglés');
   await p.eval("go('rx'); return 1;"); await sleep(900);
   check(/Mis Rx/.test(await p.text()), 'la pantalla Mis Rx se abre desde Perfil');
   await p.type('input[data-mov="thruster"]', 43); await sleep(900);

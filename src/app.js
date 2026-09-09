@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -866,7 +866,7 @@ function viewWod() {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus Rx aquí</h2><button class="link" data-action="go" data-view="rx">Editar</button></div>' +
       '<ul class="rx-chips">' + movs.map((x) => {
         const t = rxTexto(x, rx[x.id]);
-        return '<li class="' + (t ? 'puesto' : '') + '"><span>' + esc(x.es) + '</span><b>' + esc(t || '—') + '</b></li>';
+        return '<li class="' + (t ? 'puesto' : '') + '"><span>' + esc(x.nombre) + '</span><b>' + esc(t || '—') + '</b></li>';
       }).join('') + '</ul>' +
       (m ? '' : '<p class="faint small">Elige tu atleta para ver tus cargas.</p>') + '</section>';
   }
@@ -937,14 +937,14 @@ function viewRx() {
         const v = rx[x.id] || {};
         let control = '';
         if (x.tipo === 'kg' || x.tipo === 'cm') {
-          control = '<input type="number" inputmode="decimal" min="0" step="' + (x.tipo === 'kg' ? '0.5' : '1') + '" value="' + esc(v[x.tipo] != null ? v[x.tipo] : '') + '" placeholder="—" data-action="rx-num" data-mov="' + esc(x.id) + '" data-campo="' + x.tipo + '" aria-label="' + esc(x.es) + ' en ' + x.tipo + '"><span class="ud">' + x.tipo + '</span>';
+          control = '<input type="number" inputmode="decimal" min="0" step="' + (x.tipo === 'kg' ? '0.5' : '1') + '" value="' + esc(v[x.tipo] != null ? v[x.tipo] : '') + '" placeholder="—" data-action="rx-num" data-mov="' + esc(x.id) + '" data-campo="' + x.tipo + '" aria-label="' + esc(x.nombre) + ' en ' + x.tipo + '"><span class="ud">' + x.tipo + '</span>';
         } else if (x.tipo === 'estado') {
-          control = '<select data-action="rx-estado" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.es) + '"><option value="">—</option>' +
+          control = '<select data-action="rx-estado" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.nombre) + '"><option value="">—</option>' +
             ESTADOS_MOV.map((e) => '<option value="' + e[0] + '"' + (v.estado === e[0] ? ' selected' : '') + '>' + e[1] + '</option>').join('') + '</select>';
         } else {
-          control = '<input type="text" maxlength="24" value="' + esc(v.nota || '') + '" placeholder="p. ej. 1 km en 4:10" data-action="rx-nota" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.es) + '">';
+          control = '<input type="text" maxlength="24" value="' + esc(v.nota || '') + '" placeholder="p. ej. 1 km en 4:10" data-action="rx-nota" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.nombre) + '">';
         }
-        return '<li><span class="nm">' + esc(x.es) + '</span><span class="ctrl">' + control + '</span></li>';
+        return '<li><span class="nm">' + esc(x.nombre) + '</span><span class="ctrl">' + control + '</span></li>';
       }).join('') + '</ul></section>';
   });
   return html + '</div>';

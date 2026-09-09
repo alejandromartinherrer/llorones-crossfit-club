@@ -79,7 +79,7 @@ Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un cand
 
 ## Movimientos y Rx de cada uno
 
-**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos del catálogo) agrupados por barra, mancuerna y kettlebell, balón y lastre, cajón, gimnásticos, cardio y otros. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, escalado o todavía no, y una nota libre en los de cardio.
+**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados por barra, mancuerna y kettlebell, balón y lastre, cajón, gimnásticos, cardio y otros. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, escalado o todavía no, y una nota libre en los de cardio.
 
 En la ficha de cada entreno, la sección **Tus Rx aquí** detecta los movimientos que aparecen en ese WOD y enseña tus cargas, para saber de un vistazo con qué peso vas y si te sale Rx.
 
