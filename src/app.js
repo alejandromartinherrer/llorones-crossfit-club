@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -616,13 +616,13 @@ function isPR(result) {
    Movimientos y Rx personales
    ============================================================ */
 const CATS_MOV = [
-  ['barra', 'Barra'],
-  ['mancuerna', 'Mancuerna y kettlebell'],
-  ['balon', 'Balón, saco y lastre'],
-  ['cajon', 'Cajón'],
-  ['gimnastico', 'Gimnásticos'],
+  ['barra', 'Barbell'],
+  ['mancuerna', 'Dumbbell & kettlebell'],
+  ['balon', 'Ball, sandbag & vest'],
+  ['cajon', 'Box'],
+  ['gimnastico', 'Gymnastics'],
   ['cardio', 'Cardio'],
-  ['otros', 'Otros'],
+  ['otros', 'Other'],
 ];
 const ESTADOS_MOV = [['rx', 'Rx'], ['escalado', 'Escalado'], ['no', 'Aún no']];
 function movById(id) { return MOVIMIENTOS.find((m) => m.id === id) || null; }
