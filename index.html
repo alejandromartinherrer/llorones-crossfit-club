@@ -849,7 +849,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -1460,7 +1460,7 @@ const CATS_MOV = [
   ['cardio', 'Cardio'],
   ['otros', 'Other'],
 ];
-const ESTADOS_MOV = [['rx', 'Rx'], ['escalado', 'Escalado'], ['no', 'Aún no']];
+const ESTADOS_MOV = [['rx', 'Rx'], ['escalado', 'Scaled'], ['no', 'Aún no']];
 function movById(id) { return MOVIMIENTOS.find((m) => m.id === id) || null; }
 function misRx(a) { return (a && a.rx) || {}; }
 function rxTexto(m, v) {
@@ -2133,7 +2133,7 @@ function openLogResult(workoutId, pre) {
       : '<select id="f-athlete" disabled><option value="' + esc(state.meId || '') + '">' + esc((me() || { name: '—' }).name) + '</option></select>') + '</div>' +
     '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" value="' + esc(pre.date || todayISO()) + '" max="' + todayISO() + '"></div></div>' +
     '<div id="f-score">' + (w ? scoreFields(w.scoreType, pre) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
-    '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx ? ' checked' : '') + '> Rx (tal cual está escrito, con las cargas prescritas)</label>' +
+    '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx === false ? '' : ' checked') + '> Rx (tal cual está escrito, con las cargas prescritas). Quítalo si lo escalaste.</label>' +
     '<div class="field"><label for="f-notes">Notas</label><input type="text" id="f-notes" placeholder="Escalado a 40 kg, con chaleco, etc." value="' + esc(pre.notes || '') + '" maxlength="140"></div>' +
     '<p class="form-error" id="f-error"></p>';
   openSheet({ title: 'Apuntar resultado', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-result">Guardar</button>' });

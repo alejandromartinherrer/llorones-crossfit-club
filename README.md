@@ -39,7 +39,7 @@ Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
 | Apuntar una marca válida (una marca en cero no cuenta) | 5 |
 | **Rendimiento**: tu marca frente a la mejor del club en ese entreno | hasta 40 |
 | Tener la mejor marca del club en ese entreno | +5 |
-| Hacerlo Rx | +5 |
+| Hacerlo Rx (la casilla viene marcada: quítala si escalaste) | +5 |
 | Hero WOD | +10 |
 | Benchmark (Girls) | +5 |
 | Mejorar tu marca (PR) | +5 |
@@ -79,7 +79,7 @@ Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un cand
 
 ## Movimientos y Rx de cada uno
 
-**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, escalado o todavía no, y una nota libre en los de cardio.
+**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
 
 En la ficha de cada entreno, la sección **Tus Rx aquí** detecta los movimientos que aparecen en ese WOD y enseña tus cargas, para saber de un vistazo con qué peso vas y si te sale Rx.
 
