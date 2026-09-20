@@ -77,11 +77,27 @@ El PIN solo lo pone y lo quita su dueño: ni el admin puede tocarlo. Se guarda d
 
 Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un candado**. Todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede editar los datos directamente en GitHub. Para impedirlo de verdad haría falta un servidor, que es justo lo que este montaje evita.
 
+## Crear entrenos
+
+Un entreno nuestro se monta **eligiendo los movimientos de la lista**, para que todos escribamos lo mismo y la app sepa qué se hace en cada uno:
+
+- **Formato** (For time, AMRAP, EMOM, Tabata, intervalos, fuerza, otro) y por qué se puntúa, como antes.
+- **Rondas o esquema de reps**, en los formatos que lo llevan: un número son rondas (`5` → "5 rounds for time of:") y varios separados por guiones son un esquema (`21-15-9` → "21-15-9 reps for time of:"). Hay chips para los habituales (3, 5, 21-15-9, 15-12-9, 10→1; en fuerza 5x5, 5x3…).
+- **Movimientos**, una fila por cada uno: las reps a la izquierda, el movimiento en medio y la carga Rx a la derecha si la hay. Al tocar el movimiento sale la lista entera por grupos y **se filtra según escribes** ("thr" → Thruster, Dumbbell thruster). Enter elige el primero. Si escribes el nombre entero ("pull-up") se enlaza solo, y si algo no está en la lista se puede **usar tal cual** (y avisar para añadirlo al catálogo).
+- **Notas** opcionales (descansos, cómo repartir en pareja…).
+- **Así quedará**: la vista previa del texto que se genera, al estilo de los héroes, con plurales ("10 Thrusters 43/30 kg") y con "400 m" o "20 cal" en los de cardio cuando solo pones el número.
+
+Quien prefiera puede **escribirlo a mano** (el cuadro viene relleno con lo construido), y los entrenos antiguos escritos a mano se abren en ese modo; al pulsar "Mejor elegir los movimientos de la lista" se convierten en filas en lo que se pueda ("30 Push Ups" → 30 × Push-up; las líneas "Rx …" pasan a las notas).
+
+Los entrenos nuestros los edita quien los creó **o quien administra el club**, da igual quién los metiera.
+
 ## Movimientos y Rx de cada uno
 
-**Perfil → Mis Rx** tiene el catálogo de movimientos (75, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
+**Perfil → Mis Rx** tiene el catálogo de movimientos (107, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
 
-En la ficha de cada entreno, la sección **Tus Rx aquí** detecta los movimientos que aparecen en ese WOD y enseña tus cargas, para saber de un vistazo con qué peso vas y si te sale Rx.
+En la ficha de cada entreno, la sección **Tus Rx aquí** enseña tus cargas en los movimientos de ese WOD (los elegidos de la lista si se montó por bloques; adivinados en el texto si está escrito a mano), para saber de un vistazo con qué peso vas y si te sale Rx.
+
+**Al porcentaje**: arriba de Mis Rx se elige a qué porcentaje quieres ver las cargas (50, 60, 70, 80, 90 % u otro a mano) y debajo de cada movimiento con kilos aparece lo que te toca, redondeado a medio kilo (65 kg al 70 % → 45,5 kg). El porcentaje elegido se recuerda en ese móvil.
 
 ## Cronómetro
 
@@ -100,6 +116,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/movimientos.json` | Catálogos incrustados en el build |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
+| `test/puntos`, `permisos`, `entrenos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js

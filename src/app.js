@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -393,6 +393,7 @@ const state = {
   expanded: null,
   sound: localStorage.getItem(LS_PREFIX + 'sound') !== 'off',
   promptedProfile: false,
+  rxPct: leePct(),                 // Mis Rx: porcentaje con el que se miran las cargas
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
 /* ---- quién puede qué (dentro de la app) ---- */
@@ -402,7 +403,9 @@ function soyYo(id) { const m = me(); return !!m && m.id === id; }
 function puedoEditarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
 function puedoBorrarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
 function puedoBorrarResultado(r) { return !!r && (soyAdmin() || soyYo(r.athleteId)); }
-function puedoEditarEntreno(w) { return !!w && w.category === 'custom' && (soyAdmin() || (w.createdBy && soyYo(w.createdBy))); }
+/* Los héroes y las girls no se tocan. Los nuestros (los guardados no llevan `category`)
+   los edita quien los creó o quien administra el club, da igual quién los metiera. */
+function puedoEditarEntreno(w) { return !!w && (!w.category || w.category === 'custom') && (soyAdmin() || (w.createdBy && soyYo(w.createdBy))); }
 function noPuedes(quePasa) { toast(quePasa || 'Eso solo lo puede hacer quien administra el club', true); }
 const me = () => athleteById(state.meId);
 
@@ -637,14 +640,39 @@ function rxTexto(m, v) {
 /* Movimientos que aparecen en la descripción de un entreno. Se queda con el más
    específico: "strict pull-ups" gana a "pull-ups". */
 function movimientosDe(w) {
+  if (!w) return [];
+  if (w.modo === 'bloques' && Array.isArray(w.bloques)) {      // por bloques manda lo que se eligió de la lista
+    const vistos = {};
+    return w.bloques.map((b) => movPorId(b.mov)).filter((m) => m && !vistos[m.id] && (vistos[m.id] = true));
+  }
   const texto = ' ' + String(w.description || '').toLowerCase().replace(/\s+/g, ' ') + ' ';
   const hallados = [];
   MOVIMIENTOS.forEach((m) => {
     let mejor = '';
-    m.en.forEach((alias) => { if (texto.indexOf(alias.toLowerCase()) >= 0 && alias.length > mejor.length) mejor = alias; });
+    m.en.concat([m.nombre]).forEach((alias) => { if (texto.indexOf(alias.toLowerCase()) >= 0 && alias.length > mejor.length) mejor = alias; });
     if (mejor) hallados.push({ mov: m, alias: mejor });
   });
   return hallados.filter((h) => !hallados.some((o) => o !== h && o.alias.length > h.alias.length && o.alias.toLowerCase().indexOf(h.alias.toLowerCase()) >= 0)).map((h) => h.mov);
+}
+let _movIdx = null;
+function movPorId(id) {
+  if (!_movIdx) { _movIdx = {}; MOVIMIENTOS.forEach((m) => { _movIdx[m.id] = m; }); }
+  return id ? _movIdx[id] || null : null;
+}
+/* Mis Rx al porcentaje: el 70 % de 65 kg son 45,5 (se redondea a medio kilo). */
+function leePct() { try { const v = Number(localStorage.getItem(LS_PREFIX + 'rxpct')); return v >= 1 && v <= 200 ? Math.round(v) : 100; } catch (e) { return 100; } }
+function fijaPct(p) { state.rxPct = p; try { localStorage.setItem(LS_PREFIX + 'rxpct', String(p)); } catch (e) { } render(); }
+function cargaAlPct(kg, pct) { return Math.round(kg * pct / 100 * 2) / 2; }
+function fmtKgNum(n) { return String(Math.round(n * 100) / 100).replace('.', ','); }
+/* Guarda mis Rx sin redibujar la vista (el campo ya enseña lo escrito) y actualiza el contador. */
+async function guardaRx(m, rx) {
+  state.rxEditando = true;
+  try { await state.store.update('athletes', m.id, { rx }); } finally { state.rxEditando = false; }
+  const c = $('#rx-cuenta'); if (c) c.textContent = MOVIMIENTOS.filter((x) => rxTexto(x, rx[x.id])).length + ' de ' + MOVIMIENTOS.length;
+}
+function pctTexto(x, v, pct) {
+  if (!x || x.tipo !== 'kg' || !(v && v.kg > 0) || !pct || pct === 100) return '';
+  return pct + '% → ' + fmtKgNum(cargaAlPct(v.kg, pct)) + ' kg';
 }
 
 /* ============================================================
@@ -924,11 +952,17 @@ function viewRx() {
   const m = me();
   if (!m) return '<div class="view"><div class="empty"><span class="h-display h2">¿Quién eres?</span><span>Elige tu atleta para guardar tus Rx.</span><button class="btn primary" data-action="pick-athlete">Elegir atleta</button></div></div>';
   const rx = misRx(m);
+  const pct = state.rxPct || 100;
+  const fijos = [50, 60, 70, 80, 90, 100];
   const puestos = MOVIMIENTOS.filter((x) => rxTexto(x, rx[x.id])).length;
   let html = '<div class="view">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow">' + puestos + ' de ' + MOVIMIENTOS.length + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow" id="rx-cuenta">' + puestos + ' de ' + MOVIMIENTOS.length + '</span></div>' +
     '<section class="card"><span class="eyebrow">' + esc(m.name) + '</span><h1 class="h-display h2">Mis Rx</h1>' +
-    '<p class="muted small">Apunta con qué carga haces cada movimiento y cómo lo tienes. Es tuyo y solo tuyo: sirve para saber, de un vistazo, con qué peso vas en cada entreno y para no discutir si algo fue Rx.</p></section>';
+    '<p class="muted small">Apunta con qué carga haces cada movimiento y cómo lo tienes. Es tuyo y solo tuyo: sirve para saber, de un vistazo, con qué peso vas en cada entreno y para no discutir si algo fue Rx.</p>' +
+    '<div class="rx-pct"><span class="label">Ver las cargas al</span><div class="chips">' +
+      fijos.map((p) => '<button type="button" class="chip sm" data-action="rx-pct" data-v="' + p + '" aria-pressed="' + (pct === p) + '">' + p + '%</button>').join('') +
+      '<span class="otro"><input type="number" inputmode="numeric" min="1" max="200" value="' + (fijos.indexOf(pct) >= 0 ? '' : pct) + '" placeholder="otro" data-action="rx-pct-input" aria-label="Otro porcentaje"><span class="ud">%</span></span></div>' +
+    '<p class="faint small">' + (pct === 100 ? 'Elige un porcentaje y debajo de cada movimiento con kilos verás qué carga te toca hoy, redondeada a medio kilo.' : 'Debajo de cada movimiento con kilos tienes tu ' + pct + '%, redondeado a medio kilo.') + '</p></div></section>';
   CATS_MOV.forEach((c) => {
     const lista = MOVIMIENTOS.filter((x) => x.cat === c[0]);
     if (!lista.length) return;
@@ -942,9 +976,9 @@ function viewRx() {
           control = '<select data-action="rx-estado" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.nombre) + '"><option value="">—</option>' +
             ESTADOS_MOV.map((e) => '<option value="' + e[0] + '"' + (v.estado === e[0] ? ' selected' : '') + '>' + e[1] + '</option>').join('') + '</select>';
         } else {
-          control = '<input type="text" maxlength="24" value="' + esc(v.nota || '') + '" placeholder="p. ej. 1 km en 4:10" data-action="rx-nota" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.nombre) + '">';
+          control = '<input type="text" maxlength="24" value="' + esc(v.nota || '') + '" placeholder="' + esc(x.ph || 'p. ej. 1 km en 4:10') + '" data-action="rx-nota" data-mov="' + esc(x.id) + '" aria-label="' + esc(x.nombre) + '">';
         }
-        return '<li><span class="nm">' + esc(x.nombre) + '</span><span class="ctrl">' + control + '</span></li>';
+        return '<li><span class="nm">' + esc(x.nombre) + '<span class="pct">' + esc(pctTexto(x, v, pct)) + '</span></span><span class="ctrl">' + control + '</span></li>';
       }).join('') + '</ul></section>';
   });
   return html + '</div>';
@@ -1350,17 +1384,209 @@ async function saveResult() {
     else { dismissSheet(); render(); }
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
+/* ============================================================
+   Entrenos por bloques: reps + movimiento de la lista + carga
+   ============================================================ */
+const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;
+const SIN_PLURAL = { 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1 };
+const normaliza = (t) => String(t || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+/* Busca según se escribe: primero los que empiezan así, luego los que lo contienen. */
+function buscaMovimientos(q) {
+  const t = normaliza(q);
+  if (!t) return MOVIMIENTOS.slice();
+  const empieza = [], contiene = [];
+  MOVIMIENTOS.forEach((m) => {
+    const nombres = [m.nombre].concat(m.en).map(normaliza);
+    if (nombres.some((n) => n.indexOf(t) === 0)) empieza.push(m);
+    else if (nombres.some((n) => n.indexOf(t) >= 0)) contiene.push(m);
+  });
+  return empieza.concat(contiene);
+}
+/* Escrito entero ("pull-up", "Thrusters") se enlaza solo con el de la lista. */
+function movPorNombre(texto) {
+  const t = normaliza(texto);
+  if (!t) return null;
+  return MOVIMIENTOS.find((m) => normaliza(m.nombre) === t || m.en.some((a) => normaliza(a) === t)) || null;
+}
+function plural(m, cant) {
+  const n = parseInt(String(cant || '').trim(), 10);
+  if (n === 1 || m.tipo === 'nota' || SIN_PLURAL[m.id]) return m.nombre;
+  const s = m.nombre;
+  if (/[^aeiou]y$/i.test(s)) return s.slice(0, -1) + 'ies';
+  if (/(s|x|ch|sh)$/i.test(s)) return s + 'es';
+  return s + 's';
+}
+/* "400" con un movimiento de cardio son metros (calorías en la bici). */
+function cantidadBloque(b) {
+  const c = String(b.cant || '').trim();
+  const m = movPorId(b.mov);
+  if (m && m.cat === 'cardio' && /^\d+([.,]\d+)?$/.test(c)) return c + (m.id === 'bike' ? ' cal' : ' m');
+  return c;
+}
+function lineaBloque(b) {
+  const m = movPorId(b.mov);
+  return [cantidadBloque(b), m ? plural(m, b.cant) : String(b.nombre || '').trim(), String(b.carga || '').trim()].filter(Boolean).join(' ');
+}
+function numerosEsquema(esq) {
+  const t = String(esq || '').trim();
+  return ESQUEMA_RE.test(t) ? t.split(/\s*[-x×]\s*/).map(Number).filter((n) => n > 0) : [];
+}
+function llevaEsquema(type) { return type === 'fortime' || type === 'interval' || type === 'strength' || type === 'other'; }
+/* La primera línea, al estilo de los héroes: "21-15-9 reps for time of:", "5 rounds for time of:", "AMRAP 12 min:". */
+function cabeceraEntreno(w) {
+  const esq = String(w.esquema || '').trim();
+  const nums = llevaEsquema(w.type) ? numerosEsquema(esq) : [];
+  const serie = nums.length > 1 ? nums.join('-') : '';
+  const rondas = nums.length === 1 ? nums[0] : 0;
+  switch (w.type) {
+    case 'amrap': return 'AMRAP ' + (w.durationMin || 0) + ' min:';
+    case 'emom': return (w.intervalSec || 60) === 60 ? 'EMOM ' + (w.rounds || 0) + ' min:' : 'Every ' + (w.intervalSec || 60) + ' s × ' + (w.rounds || 0) + ':';
+    case 'tabata': return 'Tabata ' + (w.workSec || 20) + '/' + (w.restSec || 0) + ' × ' + (w.rounds || 8) + ':';
+    case 'fortime': return serie ? serie + ' reps for time of:' : rondas > 1 ? rondas + ' rounds for time of:' : 'For time:';
+    case 'interval': return serie ? serie + ' reps, in intervals of:' : (rondas > 1 ? rondas + ' intervals' : 'Intervals') + ' of:';
+    case 'strength': return esq ? esq + ':' : 'Strength:';
+    default: return serie ? serie + ' reps of:' : rondas > 1 ? rondas + ' rounds of:' : '';
+  }
+}
+function generaDescripcion(w) {
+  const lineas = (w.bloques || []).map(lineaBloque).filter(Boolean);
+  const cab = cabeceraEntreno(w);
+  const notas = String(w.notas || '').trim();
+  return (cab ? [cab] : []).concat(lineas).concat(notas ? ['', notas] : []).join('\n');
+}
+/* Un entreno escrito a mano se convierte en filas, en lo que se pueda: "30 Push Ups" → 30 × Push-up. */
+function parseaTexto(desc) {
+  const filas = [], notas = [];
+  String(desc || '').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+    if (/:$/.test(l)) return;
+    if (/^rx\b/i.test(l)) { notas.push(l); return; }
+    const m = l.match(/^(\d+(?:[.,]\d+)?(?:\s*(?:m|km|cal|s|min|reps?))?)\s+(.+)$/i);
+    const cant = m ? m[1] : '';
+    const resto = (m ? m[2] : l).trim();
+    const bajo = normaliza(resto);
+    let mejor = null, largo = 0;
+    MOVIMIENTOS.forEach((mv) => {
+      [mv.nombre].concat(mv.en).forEach((a) => {
+        const al = normaliza(a);
+        if (al.length > largo && bajo.indexOf(al) === 0 && (bajo.length === al.length || bajo[al.length] === ' ')) { mejor = mv; largo = al.length; }
+      });
+    });
+    filas.push(mejor ? { cant, mov: mejor.id, carga: bajo.slice(largo).trim() } : { cant, nombre: resto });
+  });
+  return { filas, notas: notas.join(' · ') };
+}
+function filaMovHtml(b) {
+  b = b || {};
+  const m = movPorId(b.mov);
+  const cardio = !!(m && m.cat === 'cardio');
+  return '<div class="mv-item"><div class="mv-row">' +
+    '<input class="cant" type="text" inputmode="' + (cardio ? 'text' : 'numeric') + '" placeholder="' + (cardio ? '400 m' : 'reps') + '" value="' + esc(b.cant || '') + '" maxlength="12" autocomplete="off" aria-label="Cantidad">' +
+    '<input class="mv-q" type="text" placeholder="Movimiento" value="' + esc(m ? m.nombre : (b.nombre || '')) + '" data-mov="' + esc(m ? m.id : '') + '" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Movimiento">' +
+    '<input class="carga" type="text" placeholder="kg" value="' + esc(b.carga || '') + '" maxlength="16" autocomplete="off" aria-label="Carga">' +
+    '<button type="button" class="icon-btn" data-action="w-row-del" aria-label="Quitar movimiento">' + icon('x') + '</button>' +
+    '</div><div class="mv-list" hidden></div></div>';
+}
+function opcionMovHtml(m) {
+  const c = CATS_MOV.find((x) => x[0] === m.cat);
+  return '<button type="button" class="mv-opt" data-action="mv-pick" data-mov="' + esc(m.id) + '" data-nombre="' + esc(m.nombre) + '">' + esc(m.nombre) + '<span class="cat">' + esc(c ? c[1] : '') + '</span></button>';
+}
+function listaMovHtml(q) {
+  const t = String(q || '').trim();
+  const res = buscaMovimientos(t);
+  if (!t) return CATS_MOV.map((c) => { const l = res.filter((m) => m.cat === c[0]); return l.length ? '<div class="mv-group">' + esc(c[1]) + '</div>' + l.map(opcionMovHtml).join('') : ''; }).join('');
+  let html = res.length ? res.slice(0, 40).map(opcionMovHtml).join('') : '<div class="mv-group">Nada parecido en la lista</div>';
+  if (!movPorNombre(t)) html += '<button type="button" class="mv-opt libre" data-action="mv-pick" data-mov="" data-nombre="' + esc(t) + '">Usar «' + esc(t) + '» tal cual<span class="cat">no está en la lista</span></button>';
+  return html;
+}
+function abreListaMov(input) {
+  const item = input.closest('.mv-item'); if (!item) return;
+  cierraListasMov(item);
+  const list = $('.mv-list', item);
+  list.innerHTML = listaMovHtml(input.value);
+  list.hidden = false; item.classList.add('abierta');
+}
+function cierraListasMov(salvo) {
+  $$('.mv-item.abierta').forEach((it) => {
+    if (it === salvo) return;
+    it.classList.remove('abierta'); const l = $('.mv-list', it); if (l) { l.hidden = true; l.innerHTML = ''; }
+  });
+}
+function eligeMov(item, id, nombre) {
+  const q = $('.mv-q', item), cant = $('.cant', item);
+  const m = movPorId(id);
+  q.value = m ? m.nombre : String(nombre || '').trim(); q.dataset.mov = m ? m.id : '';
+  const cardio = !!(m && m.cat === 'cardio');
+  cant.inputMode = cardio ? 'text' : 'numeric'; cant.placeholder = cardio ? '400 m' : 'reps';
+  cierraListasMov(); q.blur();
+  pintaPreviewEntreno();
+}
+function esquemaChips(type) {
+  const chips = type === 'strength' ? [['5x5', '5x5'], ['5x3', '5x3'], ['3x3', '3x3'], ['10x1', '10x1']] : [['1 ronda', ''], ['3', '3'], ['5', '5'], ['21-15-9', '21-15-9'], ['15-12-9', '15-12-9'], ['10→1', '10-9-8-7-6-5-4-3-2-1']];
+  return chips.map((c) => '<button type="button" class="chip sm" data-action="w-esq-chip" data-v="' + esc(c[1]) + '">' + esc(c[0]) + '</button>').join('');
+}
+function esquemaHtml(w) {
+  return '<div class="field" id="w-esq-field"' + (llevaEsquema(w.type) ? '' : ' hidden') + '><label for="w-esq">Rondas o esquema de reps</label>' +
+    '<input type="text" id="w-esq" value="' + esc(w.esquema || '') + '" placeholder="5 (rondas) · 21-15-9 · 5x5" maxlength="40" autocomplete="off">' +
+    '<div class="chips" id="w-esq-chips">' + esquemaChips(w.type) + '</div></div>';
+}
+/* Lee el formulario tal cual está (sirve para la vista previa y para guardar). */
+function leerFormEntreno() {
+  const num = (id, def) => { const el = $(id); const v = el ? Number(el.value) : NaN; return isNaN(v) ? def : v; };
+  const type = $('#w-type').value;
+  const build = $('#w-build');
+  const bloques = $$('#w-rows .mv-item').map((it) => {
+    const q = $('.mv-q', it); const nombre = q.value.trim();
+    const m = movPorId(q.dataset.mov) || movPorNombre(nombre);
+    const b = {};
+    const cant = $('.cant', it).value.trim(), carga = $('.carga', it).value.trim();
+    if (cant) b.cant = cant;
+    if (m) b.mov = m.id; else if (nombre) b.nombre = nombre;
+    if (carga) b.carga = carga;
+    return b;
+  }).filter((b) => b.mov || b.nombre);
+  return {
+    type, scoreType: $('#w-score').value, modo: build && !build.hidden ? 'bloques' : 'texto',
+    durationMin: type === 'amrap' ? clamp(num('#w-dur', 12), 1, 120) : 0,
+    timeCapMin: (type === 'fortime' || type === 'interval') ? clamp(num('#w-cap', 0), 0, 180) : 0,
+    intervalSec: type === 'emom' ? clamp(num('#w-int', 60), 10, 600) : 0,
+    rounds: type === 'emom' ? clamp(num('#w-rounds', 10), 1, 60) : type === 'tabata' ? clamp(num('#w-rounds', 8), 1, 30) : 0,
+    workSec: type === 'tabata' ? clamp(num('#w-work', 20), 5, 300) : 0,
+    restSec: type === 'tabata' ? clamp(num('#w-rest', 10), 0, 300) : 0,
+    esquema: llevaEsquema(type) && $('#w-esq') ? $('#w-esq').value.trim() : '',
+    bloques, notas: $('#w-notas') ? $('#w-notas').value.trim() : '',
+    texto: $('#w-desc') ? $('#w-desc').value.trim() : '',
+  };
+}
+function pintaPreviewEntreno() {
+  const p = $('#w-preview'); if (!p || !$('#w-type')) return;
+  const texto = generaDescripcion(leerFormEntreno());
+  p.innerHTML = texto ? texto.split('\n').map((l, i) => (i === 0 && /:$/.test(l.trim())) ? '<span class="head">' + esc(l) + '</span>' : esc(l)).join('\n') : '<span class="faint">Añade movimientos y aquí verás cómo queda.</span>';
+}
 function openWorkoutForm(existing, presetDate) {
-  const w = existing || { name: '', type: 'fortime', scoreType: 'time', durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: 10, workSec: 20, restSec: 10, description: '', scheduledDate: presetDate || '' };
+  const w = existing || { name: '', type: 'fortime', scoreType: 'time', durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: 10, workSec: 20, restSec: 10, description: '', scheduledDate: presetDate || '', esquema: '', bloques: [], notas: '' };
+  const porBloques = !existing || existing.modo === 'bloques' || !existing.description;   // los escritos a mano se abren como texto
+  const filas = (w.bloques && w.bloques.length ? w.bloques : [{}]).map(filaMovHtml).join('');
   const body =
-    '<div class="field"><label for="w-name">Nombre</label><input type="text" id="w-name" value="' + esc(w.name) + '" placeholder="Ej. Viernes de infierno" maxlength="60"></div>' +
+    '<div class="field"><label for="w-name">Nombre</label><input type="text" id="w-name" value="' + esc(w.name || '') + '" placeholder="Ej. Viernes de infierno" maxlength="60"></div>' +
     '<div class="inline-fields"><div class="field"><label for="w-type">Formato</label><select id="w-type" data-action="w-type-change">' + ['fortime', 'amrap', 'emom', 'tabata', 'interval', 'strength', 'other'].map((t) => '<option value="' + t + '"' + (w.type === t ? ' selected' : '') + '>' + TYPE_LABEL[t] + '</option>').join('') + '</select></div>' +
     '<div class="field"><label for="w-score">Se puntúa por</label><select id="w-score">' + ['time', 'rounds', 'reps', 'load'].map((s) => '<option value="' + s + '"' + (w.scoreType === s ? ' selected' : '') + '>' + SCORE_LABEL[s] + '</option>').join('') + '</select></div></div>' +
     '<div id="w-params">' + workoutParams(w) + '</div>' +
-    '<div class="field"><label for="w-desc">Entreno</label><textarea id="w-desc" placeholder="21-15-9 reps for time of:&#10;Thrusters 43/30 kg&#10;Pull-ups">' + esc(w.description) + '</textarea><span class="hint">Una línea por movimiento. Pon las cargas para que quede claro qué es Rx.</span></div>' +
+    '<div id="w-build" class="w-build"' + (porBloques ? '' : ' hidden') + '>' +
+      esquemaHtml(w) +
+      '<div class="field"><span class="label">Movimientos</span><div id="w-rows">' + filas + '</div>' +
+      '<button type="button" class="btn sm" data-action="w-row-add">' + icon('plus') + 'Añadir movimiento</button>' +
+      '<span class="hint">Reps a la izquierda, el movimiento en medio (escribe y elige de la lista) y la carga Rx a la derecha, si la hay.</span></div>' +
+      '<div class="field"><label for="w-notas">Notas (opcional)</label><input type="text" id="w-notas" value="' + esc(w.notas || '') + '" placeholder="p. ej. descansa 1 min entre rondas" maxlength="120"></div>' +
+      '<div class="field"><span class="label">Así quedará</span><div class="w-preview" id="w-preview"></div><button type="button" class="link" data-action="w-modo" data-modo="texto">Prefiero escribirlo a mano</button></div>' +
+    '</div>' +
+    '<div id="w-texto" class="w-build"' + (porBloques ? ' hidden' : '') + '>' +
+      '<div class="field"><label for="w-desc">Entreno</label><textarea id="w-desc" placeholder="21-15-9 reps for time of:&#10;Thrusters 43/30 kg&#10;Pull-ups">' + esc(w.description || '') + '</textarea><span class="hint">Una línea por movimiento. Pon las cargas para que quede claro qué es Rx.</span>' +
+      '<button type="button" class="link" data-action="w-modo" data-modo="bloques">Mejor elegir los movimientos de la lista</button></div>' +
+    '</div>' +
     '<div class="field"><label for="w-date">Programar para (opcional)</label><input type="date" id="w-date" value="' + esc(w.scheduledDate || '') + '"><span class="hint">Saldrá como “WOD de hoy” ese día.</span></div>' +
     '<p class="form-error" id="w-error"></p>';
   openSheet({ title: existing ? 'Editar entreno' : 'Nuevo entreno', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-workout" data-id="' + esc(existing ? existing.id : '') + '">Guardar</button>' });
+  pintaPreviewEntreno();
 }
 function workoutParams(w) {
   const t = w.type;
@@ -1373,25 +1599,25 @@ function workoutParams(w) {
 const DEFAULT_SCORE = { fortime: 'time', amrap: 'rounds', emom: 'reps', tabata: 'reps', interval: 'time', strength: 'load', other: 'reps' };
 async function saveWorkout(existingId) {
   const err = $('#w-error'); err.textContent = '';
-  if (existingId && !puedoEditarEntreno(state.workouts.find((x) => x.id === existingId))) { err.textContent = 'Ese entreno lo creó otra persona.'; return; }
-  const name = $('#w-name').value.trim(); const type = $('#w-type').value; const scoreType = $('#w-score').value;
-  const description = $('#w-desc').value.trim(); const scheduledDate = $('#w-date').value;
-  if (!name) { err.textContent = 'Ponle un nombre al entreno.'; return; }
-  if (!description) { err.textContent = 'Escribe el entreno (movimientos y reps).'; return; }
-  if (scheduledDate && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) { err.textContent = 'Fecha no válida.'; return; }
-  const num = (id, def) => { const el = $(id); const v = el ? Number(el.value) : NaN; return isNaN(v) ? def : v; };
   const existing = existingId ? state.workouts.find((x) => x.id === existingId) : null;
+  if (existingId && !puedoEditarEntreno(existing)) { err.textContent = 'Ese entreno lo creó otra persona.'; return; }
+  const name = $('#w-name').value.trim(); const scheduledDate = $('#w-date').value;
+  const f = leerFormEntreno();
+  if (!name) { err.textContent = 'Ponle un nombre al entreno.'; $('#w-name').focus(); return; }
+  if (scheduledDate && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) { err.textContent = 'Fecha no válida.'; return; }
+  if (f.modo === 'bloques') {
+    if (f.esquema && f.type !== 'strength' && !ESQUEMA_RE.test(f.esquema)) { err.textContent = 'El esquema es un número de rondas (5) o reps separadas por guiones (21-15-9).'; $('#w-esq').focus(); return; }
+    if (!f.bloques.length) { err.textContent = 'Añade al menos un movimiento.'; return; }
+  } else if (!f.texto) { err.textContent = 'Escribe el entreno (movimientos y reps).'; return; }
   const w = Object.assign({}, existing || {}, {
-    id: existingId || uid(), name, type, scoreType, description, scheduledDate: scheduledDate || '',
-    durationMin: type === 'amrap' ? clamp(num('#w-dur', 12), 1, 120) : 0,
-    timeCapMin: (type === 'fortime' || type === 'interval') ? clamp(num('#w-cap', 0), 0, 180) : 0,
-    intervalSec: type === 'emom' ? clamp(num('#w-int', 60), 10, 600) : 0,
-    rounds: type === 'emom' ? clamp(num('#w-rounds', 10), 1, 60) : type === 'tabata' ? clamp(num('#w-rounds', 8), 1, 30) : 0,
-    workSec: type === 'tabata' ? clamp(num('#w-work', 20), 5, 300) : 0,
-    restSec: type === 'tabata' ? clamp(num('#w-rest', 10), 0, 300) : 0,
+    id: existingId || uid(), name, type: f.type, scoreType: f.scoreType, scheduledDate: scheduledDate || '', modo: f.modo,
+    description: f.modo === 'bloques' ? generaDescripcion(f) : f.texto,
+    durationMin: f.durationMin, timeCapMin: f.timeCapMin, intervalSec: f.intervalSec, rounds: f.rounds, workSec: f.workSec, restSec: f.restSec,
     createdBy: existing ? existing.createdBy : (state.meId || ''),
     createdAt: existing ? existing.createdAt : nowISO(), updatedAt: nowISO(),
   });
+  if (f.modo === 'bloques') { w.bloques = f.bloques; w.esquema = f.esquema; w.notas = f.notas; }
+  else { delete w.bloques; delete w.esquema; delete w.notas; }
   try {
     await state.store.set('workouts', w.id, w);
     toast(existing ? 'Entreno actualizado' : 'Entreno creado: ' + w.name);
@@ -1511,11 +1737,19 @@ function go(view, params, desdeAtras) {
   window.scrollTo(0, 0);
   render();
 }
+/* Si algo pide redibujar mientras se está redibujando (un change que salta al quitar del
+   DOM un campo con foco), se apunta y se hace al terminar, en vez de pisarse. */
+let renderizando = false, renderPendiente = false;
 function render() {
-  renderTopbar(); renderTabs();
-  const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx };
-  $('#main').innerHTML = (views[state.view] || viewHome)();
-  afterRenderTimer();
+  if (renderizando) { renderPendiente = true; return; }
+  renderizando = true;
+  try {
+    renderTopbar(); renderTabs();
+    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx };
+    $('#main').innerHTML = (views[state.view] || viewHome)();
+    afterRenderTimer();
+  } finally { renderizando = false; }
+  if (renderPendiente) { renderPendiente = false; render(); }
 }
 const ACTIONS = {
   'go': (el) => go(el.dataset.view),
@@ -1601,6 +1835,37 @@ const ACTIONS = {
   'w-type-change': () => {
     const t = $('#w-type').value; $('#w-score').value = DEFAULT_SCORE[t];
     $('#w-params').innerHTML = workoutParams({ type: t, durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: t === 'tabata' ? 8 : 10, workSec: 20, restSec: 10 });
+    const f = $('#w-esq-field'); if (f) { f.hidden = !llevaEsquema(t); $('#w-esq-chips').innerHTML = esquemaChips(t); }
+    pintaPreviewEntreno();
+  },
+  'w-row-add': () => {
+    const rows = $('#w-rows'); if (!rows) return;
+    cierraListasMov();
+    rows.insertAdjacentHTML('beforeend', filaMovHtml({}));
+    const c = $('.cant', rows.lastElementChild); if (c) c.focus();
+    pintaPreviewEntreno();
+  },
+  'w-row-del': (el) => {
+    const it = el.closest('.mv-item'); const rows = $('#w-rows'); if (!it || !rows) return;
+    it.remove();
+    if (!rows.children.length) rows.insertAdjacentHTML('beforeend', filaMovHtml({}));
+    pintaPreviewEntreno();
+  },
+  'mv-pick': (el) => { const it = el.closest('.mv-item'); if (it) eligeMov(it, el.dataset.mov, el.dataset.nombre); },
+  'w-esq-chip': (el) => { const i = $('#w-esq'); if (!i) return; i.value = el.dataset.v; pintaPreviewEntreno(); },
+  'w-modo': (el) => {
+    const build = $('#w-build'), texto = $('#w-texto'), d = $('#w-desc'); if (!build || !texto || !d) return;
+    if (el.dataset.modo === 'texto') {
+      if (!d.value.trim()) { d.value = generaDescripcion(leerFormEntreno()); texto.dataset.generado = d.value; }
+      build.hidden = true; texto.hidden = false; d.focus();
+    } else {
+      if (d.value.trim() && d.value !== texto.dataset.generado) {     // lo escrito a mano se convierte en filas, en lo que se pueda
+        const r = parseaTexto(d.value);
+        if (r.filas.length) $('#w-rows').innerHTML = r.filas.map(filaMovHtml).join('');
+        if (r.notas && $('#w-notas') && !$('#w-notas').value) $('#w-notas').value = r.notas;
+      }
+      texto.hidden = true; build.hidden = false; pintaPreviewEntreno();
+    }
   },
   'log-result': (el) => openLogResult(el.dataset.id || (state.view === 'wod' ? state.params.id : null)),
   'log-wod-change': () => {
@@ -1654,6 +1919,8 @@ const ACTIONS = {
   },
   'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
+  'rx-pct': (el) => fijaPct(Number(el.dataset.v) || 100),
+  'rx-pct-input': (el) => { const v = Math.round(Number(el.value)); if (v >= 1 && v <= 200) fijaPct(v); else if (!el.value) fijaPct(100); else el.value = ''; },
   'rx-num': async (el) => {
     const m = me(); if (!m) return;
     const rx = Object.assign({}, misRx(m));
@@ -1661,7 +1928,8 @@ const ACTIONS = {
     const n = Number(el.value);
     if (el.value === '' || !(n > 0)) delete v[el.dataset.campo]; else v[el.dataset.campo] = n;
     if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
-    await state.store.update('athletes', m.id, { rx });
+    const li = el.closest('li'); const p = li && $('.pct', li); if (p) p.textContent = pctTexto(movPorId(el.dataset.mov), v, state.rxPct);
+    await guardaRx(m, rx);
   },
   'rx-estado': async (el) => {
     const m = me(); if (!m) return;
@@ -1669,7 +1937,7 @@ const ACTIONS = {
     const v = Object.assign({}, rx[el.dataset.mov] || {});
     if (!el.value) delete v.estado; else v.estado = el.value;
     if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
-    await state.store.update('athletes', m.id, { rx });
+    await guardaRx(m, rx);
   },
   'rx-nota': async (el) => {
     const m = me(); if (!m) return;
@@ -1678,7 +1946,7 @@ const ACTIONS = {
     const t = el.value.trim();
     if (!t) delete v.nota; else v.nota = t;
     if (Object.keys(v).length) rx[el.dataset.mov] = v; else delete rx[el.dataset.mov];
-    await state.store.update('athletes', m.id, { rx });
+    await guardaRx(m, rx);
   },
   'export': () => exportData(),
   'import': () => { if (!soyAdmin()) { noPuedes('Importar una copia cambia los datos de todos: solo quien administra el club'); return; } importData(); },
@@ -1706,10 +1974,28 @@ async function boot() {
   document.addEventListener('click', onAction);
   document.addEventListener('change', onChange);
   document.addEventListener('input', (e) => {
-    if (e.target.id === 'wod-search') { state.search = e.target.value; const l = $('#wod-list'); if (l) l.innerHTML = wodListHtml(); }
+    const t = e.target;
+    if (t.id === 'wod-search') { state.search = t.value; const l = $('#wod-list'); if (l) l.innerHTML = wodListHtml(); return; }
+    if (t.classList && t.classList.contains('mv-q')) { t.dataset.mov = ''; abreListaMov(t); }   // se filtra según se escribe
+    if (t.closest && t.closest('.sheet') && $('#w-preview')) pintaPreviewEntreno();
   });
+  document.addEventListener('focusin', (e) => { const t = e.target; if (t.classList && t.classList.contains('mv-q')) abreListaMov(t); });
+  document.addEventListener('pointerdown', (e) => {         // tocar fuera de la lista de movimientos la cierra
+    const t = e.target; if (!$('.mv-item.abierta')) return;
+    if (t.closest && (t.closest('.mv-list') || (t.classList && t.classList.contains('mv-q')))) return;
+    cierraListasMov();
+  }, true);
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('.mv-item.abierta')) { cierraListasMov(); return; }
     if (e.key === 'Escape' && $('#sheet-root').firstChild) dismissSheet();
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.closest && e.target.closest('#w-build')) {   // en el constructor, Enter no guarda a medias
+      e.preventDefault();
+      const it = e.target.closest('.mv-item');
+      if (e.target.classList.contains('mv-q')) { const op = it && $('.mv-opt', it); if (op) op.click(); else e.target.blur(); return; }
+      const sig = it && e.target.classList.contains('cant') ? $('.mv-q', it) : null;
+      if (sig) sig.focus(); else e.target.blur();
+      return;
+    }
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.closest('.sheet')) { const btn = $('.sheet-foot .btn.primary'); if (btn && e.target.type !== 'number') { e.preventDefault(); btn.click(); } }
   });
   $$('#tabbar .tab').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
@@ -1733,7 +2019,9 @@ async function boot() {
       state.loaded[col] = true;
       if (col === 'results') state.results.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
       if (col === 'athletes' && state.meId && !athleteById(state.meId)) setMe(null);
-      if (state.view !== 'timer' || timer.status === 'idle') render();
+      const tecleandoRx = state.view === 'rx' && (state.rxEditando || (document.activeElement && document.activeElement.closest('.rx-list')));   // los campos ya están al día: no quitar el foco
+      if (tecleandoRx) { /* nada */ }
+      else if (state.view !== 'timer' || timer.status === 'idle') render();
       if (col === 'athletes' && !state.promptedProfile && !state.meId) {
         state.promptedProfile = true;
         setTimeout(() => { if (!state.meId && !$('#sheet-root').firstChild) openPickAthlete(); }, 400);
