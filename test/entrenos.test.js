@@ -82,7 +82,7 @@ const entreno = (p, name) => p.eval("return JSON.stringify(state.workouts.find(f
   await p.send('Input.insertText', { text: 'thr' }); await sleep(300);
   const ops = JSON.parse(await p.eval("return JSON.stringify(Array.prototype.slice.call(document.querySelectorAll('#w-rows .mv-item:nth-child(1) .mv-opt')).map(function(b){return b.dataset.mov;}))"));
   console.log('   con "thr": ' + ops.join(', '));
-  check(ops[0] === 'thruster' && ops.indexOf('db-thruster') > 0 && ops.length <= 4, 'con "thr" filtra en vivo y Thruster va el primero');
+  check(ops[0] === 'thruster' && ops.indexOf('db-thruster') > 0 && ops.indexOf('kb-thruster') > 0 && ops.length <= 8, 'con "thr" filtra en vivo (thruster, DB, KB, cluster, hip thrust) y Thruster va el primero');
   await p.shot('shots/entreno-lista.png');
   await p.clickSel('#w-rows .mv-item:nth-child(1) .mv-opt[data-mov="thruster"]'); await sleep(300);
   check(await p.eval("var q = document.querySelector('#w-rows .mv-item:nth-child(1) .mv-q'); return q.value === 'Thruster' && q.dataset.mov === 'thruster' && document.querySelector('#w-rows .mv-item:nth-child(1) .mv-list').hidden"), 'al elegir queda Thruster y la lista se cierra');
@@ -192,6 +192,15 @@ const entreno = (p, name) => p.eval("return JSON.stringify(state.workouts.find(f
   check(await p.eval("return !document.querySelector('[data-mov=\"box-jump\"]').closest('li').querySelector('.pct').textContent"), 'los movimientos en cm no llevan porcentaje');
   check(await p.eval("return document.querySelectorAll('.rx-list li').length === MOVIMIENTOS.length && MOVIMIENTOS.length >= 100"), 'el catálogo tiene ya ' + (await p.eval('return MOVIMIENTOS.length')) + ' movimientos');
   check(await p.eval("return document.querySelector('[data-mov=\"plank\"]').placeholder === 'p. ej. 2:00'"), 'los de tiempo (plank) sugieren cómo apuntarlo');
+  await p.type('#rx-search', 'hspu'); await sleep(300);
+  const vivos = await p.eval("return Array.prototype.filter.call(document.querySelectorAll('.rx-list li'), function(l){return l.style.display!=='none';}).map(function(l){return l.querySelector('[data-mov]').dataset.mov;}).join(',')");
+  check(vivos === 'hspu,strict-hspu,parallette-hspu', 'el buscador de Mis Rx filtra también por abreviaturas (hspu → ' + vivos + ')');
+  check(await p.eval("return Array.prototype.filter.call(document.querySelectorAll('main section.card'), function(s){return s.style.display!=='none';}).length === 2"), 'y esconde los grupos vacíos');
+  await p.setValue('#rx-search', ''); await sleep(200);
+  check(await p.eval("return !Array.prototype.some.call(document.querySelectorAll('.rx-list li, main section.card'), function(l){return l.style.display==='none';})"), 'al borrarlo vuelven todos');
+  await p.type('#rx-search', 'around'); await sleep(300);
+  check(await p.eval("return Array.prototype.filter.call(document.querySelectorAll('.rx-list li'), function(l){return l.style.display!=='none';}).length === 1 && document.querySelector('[data-mov=\"around-the-world\"]')"), 'el around the world está en la lista');
+  await p.setValue('#rx-search', ''); await sleep(200);
 
   /* ---------- 6. cabecera bajo la barra de estado ---------- */
   const reglas = await p.eval("return Array.prototype.slice.call(document.styleSheets).filter(function(s){return !s.href;}).map(function(s){return Array.prototype.map.call(s.cssRules, function(r){return r.cssText;}).join('\\n');}).join('\\n')");

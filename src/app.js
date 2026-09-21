@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -394,6 +394,7 @@ const state = {
   sound: localStorage.getItem(LS_PREFIX + 'sound') !== 'off',
   promptedProfile: false,
   rxPct: leePct(),                 // Mis Rx: porcentaje con el que se miran las cargas
+  rxSearch: '',                    // Mis Rx: filtro del buscador
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
 /* ---- quién puede qué (dentro de la app) ---- */
@@ -669,6 +670,19 @@ async function guardaRx(m, rx) {
   state.rxEditando = true;
   try { await state.store.update('athletes', m.id, { rx }); } finally { state.rxEditando = false; }
   const c = $('#rx-cuenta'); if (c) c.textContent = MOVIMIENTOS.filter((x) => rxTexto(x, rx[x.id])).length + ' de ' + MOVIMIENTOS.length;
+}
+/* El buscador de Mis Rx esconde lo que no casa (por nombre o alias: "hspu", "kb swing"). */
+function aplicaFiltroRx() {
+  const q = normaliza(state.rxSearch || '');
+  $$('.rx-list').forEach((ul) => {
+    let vivos = 0;
+    $$('li', ul).forEach((li) => {
+      const ctl = $('[data-mov]', li); const m = movPorId(ctl && ctl.dataset.mov);
+      const casa = !q || !m || [m.nombre].concat(m.en).some((n) => normaliza(n).indexOf(q) >= 0);
+      li.style.display = casa ? '' : 'none'; if (casa) vivos++;
+    });
+    const sec = ul.closest('section'); if (sec) sec.style.display = vivos ? '' : 'none';
+  });
 }
 function pctTexto(x, v, pct) {
   if (!x || x.tipo !== 'kg' || !(v && v.kg > 0) || !pct || pct === 100) return '';
@@ -962,7 +976,8 @@ function viewRx() {
     '<div class="rx-pct"><span class="label">Ver las cargas al</span><div class="chips">' +
       fijos.map((p) => '<button type="button" class="chip sm" data-action="rx-pct" data-v="' + p + '" aria-pressed="' + (pct === p) + '">' + p + '%</button>').join('') +
       '<span class="otro"><input type="number" inputmode="numeric" min="1" max="200" value="' + (fijos.indexOf(pct) >= 0 ? '' : pct) + '" placeholder="otro" data-action="rx-pct-input" aria-label="Otro porcentaje"><span class="ud">%</span></span></div>' +
-    '<p class="faint small">' + (pct === 100 ? 'Elige un porcentaje y debajo de cada movimiento con kilos verás qué carga te toca hoy, redondeada a medio kilo.' : 'Debajo de cada movimiento con kilos tienes tu ' + pct + '%, redondeado a medio kilo.') + '</p></div></section>';
+    '<p class="faint small">' + (pct === 100 ? 'Elige un porcentaje y debajo de cada movimiento con kilos verás qué carga te toca hoy, redondeada a medio kilo.' : 'Debajo de cada movimiento con kilos tienes tu ' + pct + '%, redondeado a medio kilo.') + '</p></div></section>' +
+    '<div class="search rx-search">' + icon('search') + '<input type="search" id="rx-search" placeholder="Buscar movimiento (thr, hspu, kb…)" value="' + esc(state.rxSearch || '') + '" autocomplete="off" autocapitalize="off"></div>';
   CATS_MOV.forEach((c) => {
     const lista = MOVIMIENTOS.filter((x) => x.cat === c[0]);
     if (!lista.length) return;
@@ -1388,7 +1403,7 @@ async function saveResult() {
    Entrenos por bloques: reps + movimiento de la lista + carga
    ============================================================ */
 const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;
-const SIN_PLURAL = { 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1 };
+const SIN_PLURAL = { 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1, 'yoke-carry': 1, 'front-rack-carry': 1 };
 const normaliza = (t) => String(t || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 /* Busca según se escribe: primero los que empiezan así, luego los que lo contienen. */
 function buscaMovimientos(q) {
@@ -1748,6 +1763,7 @@ function render() {
     const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx };
     $('#main').innerHTML = (views[state.view] || viewHome)();
     afterRenderTimer();
+    if (state.view === 'rx' && state.rxSearch) aplicaFiltroRx();
   } finally { renderizando = false; }
   if (renderPendiente) { renderPendiente = false; render(); }
 }
@@ -1976,6 +1992,7 @@ async function boot() {
   document.addEventListener('input', (e) => {
     const t = e.target;
     if (t.id === 'wod-search') { state.search = t.value; const l = $('#wod-list'); if (l) l.innerHTML = wodListHtml(); return; }
+    if (t.id === 'rx-search') { state.rxSearch = t.value; aplicaFiltroRx(); return; }
     if (t.classList && t.classList.contains('mv-q')) { t.dataset.mov = ''; abreListaMov(t); }   // se filtra según se escribe
     if (t.closest && t.closest('.sheet') && $('#w-preview')) pintaPreviewEntreno();
   });
@@ -2019,7 +2036,7 @@ async function boot() {
       state.loaded[col] = true;
       if (col === 'results') state.results.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
       if (col === 'athletes' && state.meId && !athleteById(state.meId)) setMe(null);
-      const tecleandoRx = state.view === 'rx' && (state.rxEditando || (document.activeElement && document.activeElement.closest('.rx-list')));   // los campos ya están al día: no quitar el foco
+      const tecleandoRx = state.view === 'rx' && (state.rxEditando || (document.activeElement && document.activeElement.closest('.rx-list, .rx-search')));   // los campos ya están al día: no quitar el foco
       if (tecleandoRx) { /* nada */ }
       else if (state.view !== 'timer' || timer.status === 'idle') render();
       if (col === 'athletes' && !state.promptedProfile && !state.meId) {

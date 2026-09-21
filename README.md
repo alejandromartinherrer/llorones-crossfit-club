@@ -93,7 +93,9 @@ Los entrenos nuestros los edita quien los creó **o quien administra el club**, 
 
 ## Movimientos y Rx de cada uno
 
-**Perfil → Mis Rx** tiene el catálogo de movimientos (107, sacados de los propios entrenos y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
+**Perfil → Mis Rx** tiene el catálogo de movimientos (151, sacados de los propios entrenos, del Open y los Games, de Hyrox y del trabajo de kettlebell y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
+
+Como ya son muchos, arriba de la lista hay un **buscador** que filtra según escribes, también por abreviaturas (hspu, t2b, c2b, kb swing, g2oh…); las mismas abreviaturas valen al montar un entreno.
 
 En la ficha de cada entreno, la sección **Tus Rx aquí** enseña tus cargas en los movimientos de ese WOD (los elegidos de la lista si se montó por bloques; adivinados en el texto si está escrito a mano), para saber de un vistazo con qué peso vas y si te sale Rx.
 
