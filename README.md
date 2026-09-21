@@ -101,6 +101,16 @@ En la ficha de cada entreno, la sección **Tus Rx aquí** enseña tus cargas en 
 
 **Al porcentaje**: arriba de Mis Rx se elige a qué porcentaje quieres ver las cargas (50, 60, 70, 80, 90 % u otro a mano) y debajo de cada movimiento con kilos aparece lo que te toca, redondeado a medio kilo (65 kg al 70 % → 45,5 kg). El porcentaje elegido se recuerda en ese móvil.
 
+## Músculos
+
+Cada movimiento del catálogo lleva sus **músculos principales y secundarios** (16 grupos: hombros, pecho, bíceps, tríceps, antebrazos, trapecio, espalda alta, lumbar, abdominales, oblicuos, glúteos, cuádriceps, isquios, aductores, gemelos, tibiales). Con eso:
+
+- En la ficha de cada entreno, **Músculos que trabaja** dibuja el cuerpo (de frente y de espaldas) con los grupos que toca: verde intenso los principales, apagado los que ayudan. Cada movimiento suma 1 a sus principales y 0,3 a los secundarios.
+- En **Perfil → Tus músculos**, lo tuyo según las marcas que has apuntado: **Equilibrio** (reparto del trabajo por grupos en la semana, 30 días, 90 días o todo, con lo que no has tocado en ese periodo) y **Fatiga** (días desde la última marca en que cada músculo fue principal: hoy o ayer fatigado, hasta tres días en recuperación, después listo).
+- Tocar un músculo enseña qué movimientos lo trabajan (en ese entreno o en lo que has hecho) y otros del catálogo que lo tienen de principal.
+
+El dibujo del cuerpo viene de [react-native-body-highlighter](https://github.com/HichamELBSI/react-native-body-highlighter) (MIT, © 2022 ELABBASSI Hicham; licencia en `data/cuerpo.LICENSE`), convertido a `data/cuerpo.json`.
+
 ## Cronómetro
 
 For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
@@ -116,9 +126,9 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 |---|---|
 | `index.html` | La app completa, generada por `build.js` |
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
-| `data/heroes.json`, `data/girls.json`, `data/movimientos.json` | Catálogos incrustados en el build |
+| `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `musculos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js

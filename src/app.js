@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -24,6 +24,7 @@ const CREW_NAME = 'Crossfit Club';
 const HEROES = /*__HEROES__*/[];
 const GIRLS = /*__GIRLS__*/[];
 const MOVIMIENTOS = /*__MOVIMIENTOS__*/[];
+const CUERPO = /*__CUERPO__*/{ front: [], back: [] };   // paths SVG del cuerpo (react-native-body-highlighter, MIT)
 
 /* ============================================================
    Utilidades
@@ -395,6 +396,8 @@ const state = {
   promptedProfile: false,
   rxPct: leePct(),                 // Mis Rx: porcentaje con el que se miran las cargas
   rxSearch: '',                    // Mis Rx: filtro del buscador
+  muscTab: 'equilibrio',           // Tus músculos: equilibrio | fatiga
+  muscPeriodo: '30',               // Tus músculos: semana | 30 | 90 | todo
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
 /* ---- quién puede qué (dentro de la app) ---- */
@@ -911,6 +914,15 @@ function viewWod() {
         return '<li class="' + (t ? 'puesto' : '') + '"><span>' + esc(x.nombre) + '</span><b>' + esc(t || '—') + '</b></li>';
       }).join('') + '</ul>' +
       (m ? '' : '<p class="faint small">Elige tu atleta para ver tus cargas.</p>') + '</section>';
+    const pesos = musculosDeMovs(movs);
+    const orden = Object.keys(pesos).sort((a, b) => pesos[b] - pesos[a]);
+    const principales = {}; movs.forEach((x) => (x.mu || []).forEach((id) => { principales[id] = true; }));
+    if (orden.length) {
+      html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Músculos que trabaja</h2><span class="eyebrow">' + orden.length + ' grupos</span></div>' +
+        cuerpoSvg(coloresCalor(pesos), { tocable: true }) + leyenda([[CALOR[0], 'Ayuda'], [CALOR[3], 'Principal']]) +
+        '<ul class="musc-chips">' + orden.map((id) => '<li class="' + (principales[id] ? 'principal' : '') + '" data-action="musculo" data-id="' + id + '">' + esc(MUSC_NOMBRE[id]) + '</li>').join('') + '</ul>' +
+        '<p class="faint small">Toca un músculo para ver qué movimientos del entreno lo trabajan.</p></section>';
+    }
   }
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Pizarra</h2><span class="eyebrow">' + esc(SCORE_LABEL[w.scoreType] || '') + '</span></div>';
   if (board.length) {
@@ -1012,7 +1024,9 @@ function viewProfile() {
       '<div class="btn-row"><button class="btn" data-action="edit-athlete" data-id="' + esc(m.id) + '">' + icon('pen') + (tienePin(m) ? 'Editar · PIN puesto' : 'Editar y poner PIN') + '</button><button class="btn ghost" data-action="pick-athlete">Cambiar de atleta</button></div>' +
       (esAdmin(m) ? '<div class="banner live"><span class="dot"></span><span>Administras el club' + (tienePin(m) ? '.' : ': pon un PIN para que nadie se ponga tu nombre.') + '</span></div>' : '') + '</section>' +
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="rx"><div class="section-head"><h2 class="h-display h2">Mis Rx</h2><span class="chev">' + icon('chev') + '</span></div>' +
-      '<p class="muted small">Tus cargas y tu nivel en cada movimiento: ' + MOVIMIENTOS.filter((x) => rxTexto(x, misRx(m)[x.id])).length + ' de ' + MOVIMIENTOS.length + ' puestos.</p></button>';
+      '<p class="muted small">Tus cargas y tu nivel en cada movimiento: ' + MOVIMIENTOS.filter((x) => rxTexto(x, misRx(m)[x.id])).length + ' de ' + MOVIMIENTOS.length + ' puestos.</p></button>' +
+      '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="musculos"><div class="section-head"><h2 class="h-display h2">Tus músculos</h2><span class="chev">' + icon('chev') + '</span></div>' +
+      '<p class="muted small">Qué has trabajado y qué toca descansar, según los entrenos que has apuntado.</p></button>';
   } else {
     html += '<section class="card"><span class="eyebrow">Atleta</span><h2 class="h-display h2">¿Quién eres?</h2><p class="muted">Elige tu atleta para que los tiempos que apuntes cuenten para ti.</p></section>';
   }
@@ -1400,6 +1414,131 @@ async function saveResult() {
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
 /* ============================================================
+   Músculos: qué trabaja cada entreno y qué has trabajado tú
+   ============================================================ */
+const MUSCULOS = [
+  ['hom', 'Hombros', 'deltoids'], ['pec', 'Pecho', 'chest'], ['bic', 'Bíceps', 'biceps'], ['tri', 'Tríceps', 'triceps'],
+  ['ant', 'Antebrazos', 'forearm'], ['tra', 'Trapecio', 'trapezius'], ['dor', 'Espalda alta', 'upper-back'], ['lum', 'Lumbar', 'lower-back'],
+  ['abd', 'Abdominales', 'abs'], ['obl', 'Oblicuos', 'obliques'], ['glu', 'Glúteos', 'gluteal'], ['cua', 'Cuádriceps', 'quadriceps'],
+  ['isq', 'Isquios', 'hamstring'], ['adu', 'Aductores', 'adductors'], ['gem', 'Gemelos', 'calves'], ['tib', 'Tibiales', 'tibialis'],
+];
+const MUSC_NOMBRE = {}, MUSC_POR_PARTE = {};
+MUSCULOS.forEach((m) => { MUSC_NOMBRE[m[0]] = m[1]; MUSC_POR_PARTE[m[2]] = m[0]; });
+const CALOR = ['#2c6b3d', '#2f9a4d', '#3fc45f', '#6dff8a'];              // de menos a más trabajado
+const FATIGA = { fatigado: '#ef4444', recuperando: '#f5c518' };
+const PESO_SEC = 0.3;                                                    // lo que suma un músculo que solo ayuda
+const PERIODOS_MUSC = { semana: ['Semana', 7], '30': ['30 d', 30], '90': ['90 d', 90], todo: ['Todo', 0] };
+function isoHaceDias(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function diasEntre(isoA, isoB) { return Math.round((parseDate(isoB) - parseDate(isoA)) / 86400000); }
+/* Peso de cada grupo: 1 por movimiento que lo tiene de principal, 0,5 de secundario. */
+function musculosDeMovs(movs) {
+  const pesos = {};
+  movs.forEach((m) => {
+    (m.mu || []).forEach((id) => { pesos[id] = (pesos[id] || 0) + 1; });
+    (m.ms || []).forEach((id) => { pesos[id] = (pesos[id] || 0) + PESO_SEC; });
+  });
+  return pesos;
+}
+function musculosDe(w) { return musculosDeMovs(movimientosDe(w)); }
+/* Lo que ha trabajado un atleta según sus marcas válidas en el periodo: pesos por grupo,
+   veces por movimiento y última fecha en que tocó cada grupo. */
+function trabajoDe(a, periodo) {
+  const dias = PERIODOS_MUSC[periodo] ? PERIODOS_MUSC[periodo][1] : 0;
+  const desde = dias ? isoHaceDias(dias - 1) : '';
+  const t = { pesos: {}, veces: {}, ultimo: {}, marcas: 0 };
+  if (!a) return t;
+  state.results.filter((r) => r.athleteId === a.id && marcaValida(r) && (!desde || r.date >= desde)).forEach((r) => {
+    const w = getWorkout(r.workoutId); if (!w) return;
+    const movs = movimientosDe(w); if (!movs.length) return;
+    t.marcas++;
+    const toca = (id, peso) => { t.pesos[id] = (t.pesos[id] || 0) + peso; if (peso >= 1 && (!t.ultimo[id] || r.date > t.ultimo[id])) t.ultimo[id] = r.date; };   // la fatiga solo mira dónde fue principal
+    movs.forEach((m) => {
+      t.veces[m.id] = (t.veces[m.id] || 0) + 1;
+      (m.mu || []).forEach((id) => toca(id, 1));
+      (m.ms || []).forEach((id) => toca(id, PESO_SEC));
+    });
+  });
+  return t;
+}
+/* De pesos a colores: cuatro verdes según el máximo. */
+function coloresCalor(pesos) {
+  const max = Math.max(0, ...Object.values(pesos));
+  const out = {};
+  if (max > 0) Object.keys(pesos).forEach((id) => { if (pesos[id] > 0) out[id] = CALOR[Math.min(3, Math.floor(pesos[id] / max * 3.999))]; });
+  return out;
+}
+/* Colores de fatiga: hoy o ayer, fatigado; hasta tres días, recuperando; después, listo. */
+function coloresFatiga(ultimo) {
+  const hoy = todayISO(), out = {};
+  Object.keys(ultimo).forEach((id) => { const d = diasEntre(ultimo[id], hoy); if (d <= 1) out[id] = FATIGA.fatigado; else if (d <= 3) out[id] = FATIGA.recuperando; });
+  return out;
+}
+/* Dibuja el cuerpo, de frente y de espaldas. colores: {grupo: '#hex'}; lo demás va en gris. */
+function cuerpoSvg(colores, opts) {
+  opts = opts || {};
+  const lado = (partes, vb) => '<svg viewBox="' + vb + '" aria-hidden="true">' + partes.map((p) => {
+    const id = MUSC_POR_PARTE[p.m];
+    const fill = id && colores[id] ? colores[id] : 'var(--cuerpo-base)';
+    const attrs = id ? ' class="musc' + (colores[id] ? ' on' : '') + '" data-musculo="' + id + '"' + (opts.tocable ? ' data-action="musculo" data-id="' + id + '"' : '') : ' class="resto"';
+    return p.d.map((d) => '<path d="' + d + '" fill="' + fill + '"' + attrs + '></path>').join('');
+  }).join('') + '</svg>';
+  return '<div class="cuerpo' + (opts.tocable ? ' tocable' : '') + '">' + lado(CUERPO.front, '44 158 614 1192') + lado(CUERPO.back, '779 156 615 1195') + '</div>';
+}
+function leyenda(items) { return '<div class="leyenda">' + items.map((x) => '<span><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '</span>').join('') + '</div>'; }
+/* La hoja de un músculo: qué lo trabaja, en el entreno o en lo que has hecho. */
+function abreMusculo(id) {
+  if (!MUSC_NOMBRE[id]) return;
+  let movs = [], donde = 'aquí';
+  if (state.view === 'wod') { const w = getWorkout(state.params.id); movs = w ? movimientosDe(w) : []; donde = 'en este entreno'; }
+  else if (state.view === 'musculos') {
+    const t = trabajoDe(me(), state.muscTab === 'fatiga' ? 'todo' : state.muscPeriodo);
+    movs = Object.keys(t.veces).map((k) => Object.assign({ veces: t.veces[k] }, movPorId(k))).filter((m) => m.id);
+    donde = state.muscTab === 'fatiga' ? 'en tus entrenos' : 'en este periodo';
+  }
+  const porVeces = (a, b) => (b.veces || 0) - (a.veces || 0);
+  const pri = movs.filter((m) => (m.mu || []).indexOf(id) >= 0).sort(porVeces);
+  const sec = movs.filter((m) => (m.ms || []).indexOf(id) >= 0).sort(porVeces);
+  const fila = (m, tipo) => '<li><b>' + esc(m.nombre) + '</b><span>' + tipo + (m.veces ? ' · ' + m.veces + (m.veces === 1 ? ' vez' : ' veces') : '') + '</span></li>';
+  const vistos = {}; pri.concat(sec).forEach((m) => { vistos[m.id] = true; });
+  const otros = MOVIMIENTOS.filter((m) => !vistos[m.id] && (m.mu || []).indexOf(id) >= 0).slice(0, 10);
+  const body = ((pri.length || sec.length)
+    ? '<ul class="musc-movs">' + pri.map((m) => fila(m, 'Principal')).join('') + sec.map((m) => fila(m, 'Secundario')).join('') + '</ul>'
+    : '<p class="muted">Nada de lo que hay ' + donde + ' trabaja este músculo.</p>') +
+    (otros.length ? '<p class="small muted" style="margin-top:12px">Otros movimientos que lo tienen de principal:</p><ul class="rx-chips">' + otros.map((m) => '<li><span>' + esc(m.nombre) + '</span></li>').join('') + '</ul>' : '');
+  openSheet({ title: MUSC_NOMBRE[id], body, foot: '<button class="btn ghost" data-action="close-sheet">Cerrar</button>', focus: false });
+}
+/* --- TUS MÚSCULOS --- */
+function viewMusculos() {
+  const m = me();
+  if (!m) return '<div class="view"><div class="empty"><span class="h-display h2">¿Quién eres?</span><span>Elige tu atleta para ver qué has trabajado.</span><button class="btn primary" data-action="pick-athlete">Elegir atleta</button></div></div>';
+  const tab = state.muscTab === 'fatiga' ? 'fatiga' : 'equilibrio';
+  const per = PERIODOS_MUSC[state.muscPeriodo] ? state.muscPeriodo : '30';
+  const t = trabajoDe(m, tab === 'fatiga' ? 'todo' : per);
+  let html = '<div class="view">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow">' + t.marcas + ' entreno' + (t.marcas === 1 ? '' : 's') + '</span></div>' +
+    '<section class="card"><span class="eyebrow">' + esc(m.name) + '</span><h1 class="h-display h2">Tus músculos</h1>' +
+    '<div class="segmented" role="tablist">' + [['equilibrio', 'Equilibrio'], ['fatiga', 'Fatiga']].map((x) => '<button role="tab" data-action="musc-tab" data-tab="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + x[1] + '</button>').join('') + '</div>';
+  if (tab === 'equilibrio') {
+    const orden = Object.keys(t.pesos).sort((a, b) => t.pesos[b] - t.pesos[a]);
+    const max = orden.length ? t.pesos[orden[0]] : 0;
+    const sin = MUSCULOS.filter((x) => !t.pesos[x[0]]);
+    html += '<div class="segmented sm" style="margin-top:10px">' + ['semana', '30', '90', 'todo'].map((k) => '<button data-action="musc-periodo" data-periodo="' + k + '" aria-pressed="' + (per === k) + '">' + PERIODOS_MUSC[k][0] + '</button>').join('') + '</div>' +
+      '<p class="muted small" style="margin-top:10px">Reparto del trabajo entre grupos según los entrenos que has apuntado: cada movimiento suma 1 a sus músculos principales y 0,3 a los que ayudan.</p>' +
+      (t.marcas ? '' : '<p class="muted">Sin entrenos apuntados en este periodo.</p>') +
+      cuerpoSvg(coloresCalor(t.pesos), { tocable: true }) + leyenda([[CALOR[0], 'Menos'], [CALOR[1], ''], [CALOR[2], ''], [CALOR[3], 'Más']]) +
+      (orden.length ? '<p class="faint small">Toca un músculo para ver qué lo ha trabajado.</p><ul class="musc-list">' + orden.map((id) => { const pct = Math.round(t.pesos[id] / max * 100); return '<li data-action="musculo" data-id="' + id + '"><span>' + esc(MUSC_NOMBRE[id]) + '</span><span class="bar"><i style="width:' + pct + '%"></i></span><b>' + pct + ' %</b></li>'; }).join('') + '</ul>' : '') +
+      (sin.length && t.marcas ? '<p class="small muted" style="margin-top:12px">Sin trabajar en este periodo</p><ul class="musc-chips">' + sin.map((x) => '<li class="sin" data-action="musculo" data-id="' + x[0] + '">' + esc(x[1]) + '</li>').join('') + '</ul>' : '');
+  } else {
+    const hoy = todayISO();
+    const filas = MUSCULOS.map((x) => ({ id: x[0], nombre: x[1], dias: t.ultimo[x[0]] ? diasEntre(t.ultimo[x[0]], hoy) : null })).sort((a, b) => (a.dias == null ? 1e9 : a.dias) - (b.dias == null ? 1e9 : b.dias));
+    html += '<p class="muted small" style="margin-top:10px">Días desde la última marca en que cada músculo fue principal: hoy o ayer, fatigado; hasta tres días, en recuperación; después, listo para otra.</p>' +
+      cuerpoSvg(coloresFatiga(t.ultimo), { tocable: true }) + leyenda([[FATIGA.fatigado, 'Fatigado'], [FATIGA.recuperando, 'En recuperación'], ['var(--cuerpo-base)', 'Listo']]) +
+      '<ul class="musc-list fatiga">' + filas.map((f) => '<li data-action="musculo" data-id="' + f.id + '"><span>' + esc(f.nombre) + '</span><i style="background:' + (f.dias == null ? 'var(--cuerpo-base)' : f.dias <= 1 ? FATIGA.fatigado : f.dias <= 3 ? FATIGA.recuperando : 'var(--cuerpo-base)') + '"></i><b>' + (f.dias == null ? 'nunca' : f.dias === 0 ? 'hoy' : f.dias === 1 ? 'ayer' : 'hace ' + f.dias + ' días') + '</b></li>').join('') + '</ul>';
+  }
+  return html + '</section></div>';
+}
+
+/* ============================================================
    Entrenos por bloques: reps + movimiento de la lista + carga
    ============================================================ */
 const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;
@@ -1760,7 +1899,7 @@ function render() {
   renderizando = true;
   try {
     renderTopbar(); renderTabs();
-    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx };
+    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos };
     $('#main').innerHTML = (views[state.view] || viewHome)();
     afterRenderTimer();
     if (state.view === 'rx' && state.rxSearch) aplicaFiltroRx();
@@ -1935,6 +2074,9 @@ const ACTIONS = {
   },
   'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
+  'musculo': (el) => abreMusculo(el.dataset.id),
+  'musc-tab': (el) => { state.muscTab = el.dataset.tab; render(); },
+  'musc-periodo': (el) => { state.muscPeriodo = el.dataset.periodo; render(); },
   'rx-pct': (el) => fijaPct(Number(el.dataset.v) || 100),
   'rx-pct-input': (el) => { const v = Math.round(Number(el.value)); if (v >= 1 && v <= 200) fijaPct(v); else if (!el.value) fijaPct(100); else el.value = ''; },
   'rx-num': async (el) => {
