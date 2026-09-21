@@ -878,6 +878,11 @@ details[open] > summary::after { content: "–"; }
 .musc-movs li span { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .segmented.sm button { padding: 6px 4px; font-size: 13px; }
 
+/* ---------- editar / borrar marcas ---------- */
+.acciones { display: inline-flex; gap: 2px; }
+.feed-li { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.feed-li > .icon-btn { margin-right: 8px; }
+
 </style>
 </head>
 <body>
@@ -916,7 +921,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -1310,6 +1315,7 @@ function soyYo(id) { const m = me(); return !!m && m.id === id; }
 function puedoEditarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
 function puedoBorrarAtleta(a) { return !!a && (soyAdmin() || soyYo(a.id)); }
 function puedoBorrarResultado(r) { return !!r && (soyAdmin() || soyYo(r.athleteId)); }
+function puedoEditarResultado(r) { return puedoBorrarResultado(r); }
 /* Los héroes y las girls no se tocan. Los nuestros (los guardados no llevan `category`)
    los edita quien los creó o quien administra el club, da igual quién los metiera. */
 function puedoEditarEntreno(w) { return !!w && (!w.category || w.category === 'custom') && (soyAdmin() || (w.createdBy && soyYo(w.createdBy))); }
@@ -1715,7 +1721,9 @@ function viewHome() {
       html += '<div><h2 class="h-display h1">' + esc(w.name) + '</h2><div class="meta-line">' + workoutMeta(w).map((b) => badge('type', b)).join('') + '</div>' +
         '<div class="wod-desc" style="margin-top:8px">' + esc(w.description) + '</div>' +
         '<div class="btn-row" style="margin-top:12px"><button class="btn primary" data-action="timer-for" data-id="' + esc(w.id) + '">' + icon('timer') + 'Cronómetro</button>' +
-        '<button class="btn" data-action="log-result" data-id="' + esc(w.id) + '">Apuntar</button></div></div>';
+        '<button class="btn" data-action="log-result" data-id="' + esc(w.id) + '">Apuntar</button></div>' +
+        '<div class="btn-row" style="margin-top:8px"><button class="btn ghost sm" data-action="open-wod" data-id="' + esc(w.id) + '">Ver ficha</button>' +
+        (puedoEditarEntreno(w) ? '<button class="btn ghost sm" data-action="edit-workout" data-id="' + esc(w.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost sm danger" data-action="delete-workout" data-id="' + esc(w.id) + '">' + icon('trash') + 'Quitar</button>' : '') + '</div></div>';
     });
   } else {
     html += '<p class="muted">Nadie ha programado un entreno para hoy. Elige uno de la lista o crea el vuestro.</p>' +
@@ -1748,9 +1756,9 @@ function viewHome() {
   if (feed.length) {
     html += '<ul class="list" style="border:0">' + feed.map((r) => {
       const a = athleteById(r.athleteId);
-      return '<li><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + r.workoutName + ', ' + fmtScore(r)) + '">' + avatar(a) +
+      return '<li class="feed-li"><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + r.workoutName + ', ' + fmtScore(r)) + '">' + avatar(a) +
         '<span><span class="what"><b>' + esc(a ? a.name : '?') + '</b> · ' + esc(r.workoutName) + '</span><br><span class="when">' + esc(relDate(r.date)) + (r.notes ? ' · ' + esc(r.notes) : '') + '</span></span>' +
-        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (!marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button></li>';
+        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (!marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button>' + (puedoBorrarResultado(r) ? '<button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<div class="empty"><span class="h-display h2">Pizarra en blanco</span><span>Apunta el primer tiempo de la cuadrilla.</span><button class="btn primary" data-action="log-result">Apuntar resultado</button></div>';
@@ -1831,7 +1839,7 @@ function viewWod() {
   if (board.length) {
     html += '<ul class="list wod-lb" style="border:0">' + board.map((r, i) => {
       const a = athleteById(r.athleteId);
-      return '<li><span class="pos p' + (i + 1) + '">' + (i + 1) + '</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (soyAdmin() && !soyYo(r.athleteId) ? '<button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button>' : '') + '</li>';
+      return '<li><span class="pos p' + (i + 1) + '">' + (i + 1) + '</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button></span>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<p class="muted">Nadie lo ha hecho todavía. Sé el primero en la pizarra.</p>';
@@ -1840,7 +1848,7 @@ function viewWod() {
   if (m) {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus marcas</h2></div>';
     if (mine.length) {
-      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (!marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></li>').join('') + '</ul>';
+      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (!marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></span></li>').join('') + '</ul>';
     } else {
       html += '<p class="muted">Todavía no tienes marca en este entreno.</p>';
     }
@@ -2250,12 +2258,14 @@ function scoreFields(scoreType, pre) {
   if (scoreType === 'load') return '<div class="field"><label for="f-load">Peso (kg)</label><input type="number" id="f-load" min="0" step="0.5" value="' + (pre.load != null ? pre.load : '') + '" inputmode="decimal"></div>';
   return '';
 }
-function openLogResult(workoutId, pre) {
+function openLogResult(workoutId, pre, editId) {
   pre = pre || {};
+  const existente = editId ? state.results.find((x) => x.id === editId) : null;
   const w = workoutId ? getWorkout(workoutId) : null;
   const athletes = state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name));
   if (!athletes.length) { openNewAthlete(); return; }
   const body =
+    '<input type="hidden" id="f-id" value="' + esc(editId || '') + '">' +
     '<div class="field"><label for="f-wod">Entreno</label><select id="f-wod" data-action="log-wod-change">' + workoutOptions(w ? w.id : '') + '</select>' + (w ? '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · se puntúa por ' + esc(SCORE_LABEL[w.scoreType]) + '</span>' : '') + '</div>' +
     '<div class="inline-fields"><div class="field"><label for="f-athlete">Atleta</label>' +
     (soyAdmin()
@@ -2266,7 +2276,7 @@ function openLogResult(workoutId, pre) {
     '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx === false ? '' : ' checked') + '> Rx (tal cual está escrito, con las cargas prescritas). Quítalo si lo escalaste.</label>' +
     '<div class="field"><label for="f-notes">Notas</label><input type="text" id="f-notes" placeholder="Escalado a 40 kg, con chaleco, etc." value="' + esc(pre.notes || '') + '" maxlength="140"></div>' +
     '<p class="form-error" id="f-error"></p>';
-  openSheet({ title: 'Apuntar resultado', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-result">Guardar</button>' });
+  openSheet({ title: existente ? 'Editar marca' : 'Apuntar resultado', body, foot: (existente && puedoBorrarResultado(existente) ? '<button class="btn danger" data-action="delete-result" data-id="' + esc(existente.id) + '" aria-label="Borrar marca">' + icon('trash') + '</button>' : '') + '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-result">Guardar</button>' });
 }
 function readTime() {
   const h = Number($('#f-h').value || 0), m = Number($('#f-m').value || 0), s = Number($('#f-s').value || 0);
@@ -2277,11 +2287,17 @@ async function saveResult() {
   const err = $('#f-error'); err.textContent = '';
   const wid = $('#f-wod').value; const w = getWorkout(wid);
   if (!w) { err.textContent = 'Elige un entreno.'; return; }
-  const athleteId = soyAdmin() ? $('#f-athlete').value : state.meId; const date = $('#f-date').value;
+  const editId = ($('#f-id') || {}).value || '';
+  const existente = editId ? state.results.find((x) => x.id === editId) : null;
+  if (editId && !existente) { err.textContent = 'Esa marca ya no existe.'; return; }
+  if (existente && !puedoEditarResultado(existente)) { err.textContent = 'Solo puedes cambiar tus marcas.'; return; }
+  const athleteId = soyAdmin() ? $('#f-athlete').value : (existente ? existente.athleteId : state.meId); const date = $('#f-date').value;
   if (!athleteById(athleteId)) { err.textContent = 'Elige tu atleta antes de apuntar.'; return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = 'Pon una fecha válida.'; return; }
   if (date > todayISO()) { err.textContent = 'La fecha no puede ser futura.'; return; }
-  const r = { id: uid(), athleteId, workoutId: w.id, workoutName: w.name, category: w.category, scoreType: w.scoreType, date, rx: $('#f-rx').checked, notes: $('#f-notes').value.trim(), createdAt: nowISO(), createdBy: state.meId || athleteId };
+  // al editar se rehace entera (mismo id y creación): no quedan campos de otro tipo de marca
+  const r = Object.assign(existente ? { id: existente.id, createdAt: existente.createdAt || nowISO(), createdBy: existente.createdBy || existente.athleteId } : { id: uid(), createdAt: nowISO(), createdBy: state.meId || athleteId },
+    { athleteId, workoutId: w.id, workoutName: w.name, category: w.category, scoreType: w.scoreType, date, rx: $('#f-rx').checked, notes: $('#f-notes').value.trim() });
   if (w.scoreType === 'time') {
     const capped = $('#f-capped').checked;
     if (capped) {
@@ -2310,6 +2326,7 @@ async function saveResult() {
   }
   try {
     await state.store.set('results', r.id, r);
+    if (existente) { toast('Marca actualizada: ' + fmtScore(r) + ' en ' + w.name); dismissSheet(); render(); return; }
     const pr = isPR(Object.assign({}, r));
     toast(pr ? '¡PR! ' + fmtScore(r) + ' en ' + w.name : 'Apuntado: ' + fmtScore(r) + ' en ' + w.name);
     if (state.view === 'timer') { closeSheet(); timerReset(); go('wod', { id: w.id }); }
@@ -2886,7 +2903,8 @@ const ACTIONS = {
     if (ajenas && !soyAdmin()) { noPuedes('Hay ' + ajenas + ' marca' + (ajenas === 1 ? '' : 's') + ' de otra gente en ese entreno: que lo borre quien administra el club'); return; }
     if (await confirmSheet('Borrar entreno', '¿Borrar “' + w.name + '”?' + (marcas.length ? ' Se borrarán también las ' + marcas.length + ' marca' + (marcas.length === 1 ? '' : 's') + ' apuntadas' + (ajenas ? ' (' + ajenas + ' de otras personas)' : '') + '.' : ''))) {
       for (const r of marcas) await state.store.remove('results', r.id);
-      toast('Entreno borrado'); await state.store.remove('workouts', w.id); go('wods');
+      toast('Entreno borrado'); await state.store.remove('workouts', w.id);
+      if (state.view === 'wod') go('wods'); else { dismissSheet(); render(); }   // desde Hoy se queda en Hoy
     } else dismissSheet();
   },
   'save-workout': (el) => saveWorkout(el.dataset.id || null),
@@ -2934,6 +2952,11 @@ const ACTIONS = {
   },
   'toggle-capped': () => { const c = $('#f-capped').checked; $('#f-capped-reps').hidden = !c; },
   'save-result': () => saveResult(),
+  'edit-result': (el) => {
+    const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
+    if (!puedoEditarResultado(r)) { noPuedes('Solo puedes cambiar tus marcas'); return; }
+    openLogResult(r.workoutId, r, r.id);
+  },
   'delete-result': async (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
     if (!puedoBorrarResultado(r)) { noPuedes('Solo puedes borrar tus marcas'); return; }

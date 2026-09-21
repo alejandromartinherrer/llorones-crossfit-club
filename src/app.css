@@ -862,3 +862,8 @@ details[open] > summary::after { content: "–"; }
 .musc-movs li:first-child { border-top: 0; }
 .musc-movs li span { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .segmented.sm button { padding: 6px 4px; font-size: 13px; }
+
+/* ---------- editar / borrar marcas ---------- */
+.acciones { display: inline-flex; gap: 2px; }
+.feed-li { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.feed-li > .icon-btn { margin-right: 8px; }

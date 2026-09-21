@@ -55,17 +55,19 @@ La app tiene un **administrador** (quien montó el club; puede nombrar a más de
 
 | | Cualquiera | Admin |
 |---|---|---|
-| Crearse su atleta, apuntar y borrar **sus** marcas, poner sus Rx | ✔ | ✔ |
+| Crearse su atleta, apuntar, editar y borrar **sus** marcas, poner sus Rx | ✔ | ✔ |
 | Cambiar **su** nombre, disco y PIN | ✔ | ✔ |
 | Crear entrenos y editar o borrar **los suyos** | ✔ | ✔ |
 | Editar o borrar a **otro** atleta | ✘ | ✔ |
-| Borrar marcas de **otro** | ✘ | ✔ |
+| Editar o borrar marcas de **otro** | ✘ | ✔ |
 | Editar o borrar entrenos de **otro** | ✘ | ✔ |
 | Nombrar administradores | ✘ | ✔ |
 | Cambiar o quitar el PIN de otro | ✘ | ✘ (ni el admin) |
 | Importar una copia (cambia los datos de todos) | ✘ | ✔ |
 
 Al apuntar una marca, quien no es admin solo puede hacerlo a su nombre: el selector de atleta queda fijado en él.
+
+Si te equivocas de día o de resultado, **una marca se edita** (fecha, resultado, Rx, notas e incluso el entreno) **o se borra** con el lápiz y la papelera que salen donde se ve: en la ficha del entreno (Tus marcas y la pizarra) y en los Últimos tiempos de Hoy. El entreno del día también se edita o se quita desde la tarjeta "WOD de hoy".
 
 Dos reglas más para que el club no se rompa: **el primero que se da de alta en un club vacío queda como administrador** (si no, nadie podría serlo nunca), y **no se puede borrar al último administrador**. Al borrar un atleta o un entreno propio se avisa de cuántas marcas se van con él y se borran también, para no dejar marcas fantasma puntuando.
 
@@ -128,7 +130,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `musculos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js
