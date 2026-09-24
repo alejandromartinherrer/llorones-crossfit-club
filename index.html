@@ -883,6 +883,30 @@ details[open] > summary::after { content: "–"; }
 .feed-li { display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .feed-li > .icon-btn { margin-right: 8px; }
 
+/* ---------- entrenos sugeridos ---------- */
+.sug-dur { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 6px; }
+.sug-dur-cab { display: flex; justify-content: space-between; align-items: baseline; }
+.sug-dur-cab .label { font-family: var(--font-cond); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.sug-dur output { font-family: var(--font-display); font-size: 34px; line-height: 1; color: var(--text); }
+.sug-dur input[type="range"] { width: 100%; height: 32px; accent-color: var(--accent); margin: 0; }
+.sug-marcas { display: flex; justify-content: space-between; font-family: var(--font-cond); font-size: 12px; color: var(--faint); padding: 0 2px; }
+.sug-estado { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.sug-estado b { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; color: var(--muted); margin-right: 4px; }
+.sug-sec { display: flex; flex-direction: column; gap: 10px; }
+.sug-card { display: flex; flex-direction: column; gap: 10px; }
+.sug-card .wod-desc { font-size: 15px; }
+.sug-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.sug-chips span { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12px; color: var(--muted); }
+.sug-chips .listo { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); color: var(--text); }
+.sug-chips .recuperando { border-color: color-mix(in srgb, #f5c518 60%, var(--line)); }
+.sug-chips .fatigado { border-color: color-mix(in srgb, #ef4444 65%, var(--line)); color: color-mix(in srgb, #ef4444 70%, var(--text)); }
+.sug-cat .row { align-items: start; }
+.sug-cat .row > .badge { margin-top: 2px; }
+.sug-cat .row > span:nth-child(2) { min-width: 0; }       /* que el texto se ajuste al ancho en vez de salirse */
+.sug-cat .sub { display: block; }
+.sug-cat .por-que { white-space: normal; }
+.sug-cat .por-que { color: var(--faint); font-size: 12px; margin-top: 2px; }
+
 </style>
 </head>
 <body>
@@ -921,7 +945,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.9.0';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -1306,6 +1330,8 @@ const state = {
   rxSearch: '',                    // Mis Rx: filtro del buscador
   muscTab: 'equilibrio',           // Tus músculos: equilibrio | fatiga
   muscPeriodo: '30',               // Tus músculos: semana | 30 | 90 | todo
+  sugDur: leeSugDur(),             // Entrenos sugeridos: minutos que tienes (5-25)
+  sugSeed: 0,                      // Entrenos sugeridos: "Otras ideas" cambia la semilla
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
 /* ---- quién puede qué (dentro de la app) ---- */
@@ -1552,8 +1578,16 @@ function rxTexto(m, v) {
 }
 /* Movimientos que aparecen en la descripción de un entreno. Se queda con el más
    específico: "strict pull-ups" gana a "pull-ups". */
+const _movsMemo = new WeakMap();
 function movimientosDe(w) {
   if (!w) return [];
+  if (w.category === 'hero' || w.category === 'girl') {                 // los de serie no cambian: se detecta una vez
+    if (!_movsMemo.has(w)) _movsMemo.set(w, movimientosDeTexto(w));
+    return _movsMemo.get(w);
+  }
+  return movimientosDeTexto(w);
+}
+function movimientosDeTexto(w) {
   if (w.modo === 'bloques' && Array.isArray(w.bloques)) {      // por bloques manda lo que se eligió de la lista
     const vistos = {};
     return w.bloques.map((b) => movPorId(b.mov)).filter((m) => m && !vistos[m.id] && (vistos[m.id] = true));
@@ -1681,7 +1715,7 @@ function renderTopbar() {
 }
 function renderTabs() {
   $$('#tabbar .tab').forEach((b) => {
-    const active = b.dataset.view === state.view || (state.view === 'wod' && b.dataset.view === 'wods');
+    const active = b.dataset.view === state.view || (state.view === 'wod' && b.dataset.view === 'wods') || (['rx', 'musculos', 'sugeridos'].indexOf(state.view) >= 0 && b.dataset.view === 'profile');
     if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
 }
@@ -1937,7 +1971,9 @@ function viewProfile() {
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="rx"><div class="section-head"><h2 class="h-display h2">Mis Rx</h2><span class="chev">' + icon('chev') + '</span></div>' +
       '<p class="muted small">Tus cargas y tu nivel en cada movimiento: ' + MOVIMIENTOS.filter((x) => rxTexto(x, misRx(m)[x.id])).length + ' de ' + MOVIMIENTOS.length + ' puestos.</p></button>' +
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="musculos"><div class="section-head"><h2 class="h-display h2">Tus músculos</h2><span class="chev">' + icon('chev') + '</span></div>' +
-      '<p class="muted small">Qué has trabajado y qué toca descansar, según los entrenos que has apuntado.</p></button>';
+      '<p class="muted small">Qué has trabajado y qué toca descansar, según los entrenos que has apuntado.</p></button>' +
+      '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="sugeridos"><div class="section-head"><h2 class="h-display h2">Entrenos sugeridos</h2><span class="chev">' + icon('chev') + '</span></div>' +
+      '<p class="muted small">' + (function () { const t = gruposQueTocan(estadoMuscular(m)).slice(0, 3); return 'Según tu carga y tu fatiga, para lo que tengas: de 5 a 25 min.' + (t.length ? ' Hoy toca ' + esc(nombresMusc(t)) + '.' : ''); })() + '</p></button>';
   } else {
     html += '<section class="card"><span class="eyebrow">Atleta</span><h2 class="h-display h2">¿Quién eres?</h2><p class="muted">Elige tu atleta para que los tiempos que apuntes cuenten para ti.</p></section>';
   }
@@ -2459,10 +2495,465 @@ function viewMusculos() {
 }
 
 /* ============================================================
+   Entrenos sugeridos: cuánto dura cada entreno, cómo tienes cada
+   músculo y qué entrenos encajan con eso y con el tiempo que tienes
+   ============================================================ */
+/* Segundos por repetición de un atleta medio, con la carga de metcon de referencia. */
+const SPR = {
+  thruster: 3, 'front-squat': 2.4, 'back-squat': 2.6, 'overhead-squat': 3.6, deadlift: 2, sdhp: 2.3, clean: 3.2, 'power-clean': 2.8, 'squat-clean': 3.2,
+  'hang-power-clean': 2.6, 'clean-and-jerk': 4, jerk: 2.6, 'push-jerk': 2.4, 'push-press': 2.4, 'strict-press': 2.6, 'shoulder-to-overhead': 2.4, snatch: 3.6,
+  'power-snatch': 3, 'squat-snatch': 3.8, 'hang-power-snatch': 2.8, 'bench-press': 2.4, 'overhead-lunge': 3, 'front-rack-lunge': 2.8, 'hang-squat-clean': 3.2,
+  'hang-snatch': 3.4, 'split-jerk': 2.8, 'romanian-deadlift': 2.2, 'good-morning': 2.2, 'barbell-row': 2.2, 'back-rack-lunge': 2.8, cluster: 3.8, 'sumo-deadlift': 2.2,
+  'floor-press': 2.4, 'snatch-balance': 3, 'muscle-snatch': 2.8, 'clean-pull': 2.2, 'snatch-pull': 2.2, 'ground-to-overhead': 3.4, 'hip-thrust': 2.2, curl: 2, 'landmine-press': 2.2,
+  'kb-swing': 2, 'turkish-get-up': 20, 'db-snatch': 2.4, 'db-thruster': 2.6, 'db-squat-clean': 2.8, 'db-split-clean': 3.5, 'db-deadlift': 2, 'db-lunge': 2.6, 'goblet-squat': 2.4,
+  'devil-press': 5, 'db-push-press': 2.2, 'db-clean': 2.4, 'db-clean-and-jerk': 3.4, 'db-bench-press': 2.4, 'kb-clean': 2.4, 'kb-snatch': 2.6, 'around-the-world': 3, halo: 3,
+  windmill: 4, 'man-maker': 8, 'renegade-row': 3.2, 'db-row': 2.2, 'db-front-squat': 2.4, 'kb-deadlift': 2, 'kb-press': 2.4, 'kb-front-squat': 2.4, 'kb-thruster': 2.6,
+  'wall-ball': 2.8, 'med-ball-clean': 2.8, sandbag: 5, 'ball-slam': 2.2, 'plate-g2oh': 3,
+  'pull-up': 2.5, 'strict-pull-up': 3.5, c2b: 3, 'l-pull-up': 4, 'burpee-pull-up': 6, 'muscle-up': 10, 'bar-muscle-up': 7, hspu: 4, 'strict-hspu': 6, 'parallette-hspu': 5,
+  t2b: 3, k2e: 2.6, 'ring-dip': 3.5, 'push-up': 2.2, 'hr-push-up': 2.8, pistol: 3, 'double-under': 0.6, 'rope-climb': 30, ghd: 2.6, 'back-extension': 2.2, 'sit-up': 2.2,
+  'air-squat': 1.7, burpee: 4.5, 'ring-row': 2.2, 'jumping-pull-up': 2, 'strict-t2b': 3.5, 'strict-muscle-up': 10, 'wall-walk': 12, 'hollow-rock': 1, 'v-up': 2,
+  'mountain-climber': 0.7, 'jumping-lunge': 1.6, 'jump-squat': 2, 'tuck-jump': 2.2, 'broad-jump': 3, 'single-under': 0.4, crossover: 1, 'weighted-pull-up': 3, 'chin-up': 2.2,
+  'bar-dip': 2.4, pegboard: 40, 'hanging-knee-raise': 2, 'russian-twist': 1.2, 'pike-push-up': 2.4, 'shoulder-tap': 1, superman: 2, 'cossack-squat': 3, 'burpee-broad-jump': 5,
+  'up-down': 2.5, 'triple-under': 3, 'forward-roll': 2.5, 'reverse-hyper': 2, 'box-jump': 3, 'box-jump-over': 3.2, 'box-step-up': 3, 'walking-lunge': 2, inchworm: 5, 'jumping-jack': 1,
+};
+const SPR_CAT = { barra: 3, mancuerna: 2.6, balon: 3, cajon: 3, gimnastico: 2.5, cardio: 4, otros: 2.5 };
+/* Segundos por metro en los de distancia, y por caloría en las máquinas. */
+const SPM = { run: 0.3, row: 0.26, ski: 0.28, bike: 0.12, swim: 1.8, 'handstand-walk': 2.5, 'walking-lunge': 2.7, 'overhead-lunge': 3, 'front-rack-lunge': 3, 'back-rack-lunge': 3, 'db-lunge': 2.8, 'bear-crawl': 2, 'farmers-carry': 1, 'overhead-carry': 1.2, 'waiters-walk': 1.2, 'front-rack-carry': 1.1, sandbag: 1.3, 'plate-carry': 0.45, 'buddy-carry': 1.5, 'yoke-carry': 1.5, sled: 2, 'broad-jump': 1.5, 'burpee-broad-jump': 2.5 };
+const SPC = { row: 4.2, bike: 4.5, ski: 4.5 };
+const UNIDAD_M = { m: 1, meter: 1, meters: 1, metre: 1, metres: 1, km: 1000, k: 1000, mile: 1609, miles: 1609, foot: 0.3048, feet: 0.3048, ft: 0.3048, yard: 0.9144, yards: 0.9144 };
+const NUM_PAL = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const numeroTexto = (t) => NUM_PAL[t] || Number(String(t).replace(/,/g, ''));
+const sprDe = (m) => SPR[m.id] || SPR_CAT[m.cat] || 2.5;
+/* Kilos escritos en un texto: "43/30 kg", "(95/65 lb)", "1.5/1 pood", "Rx 60kg". Se queda con el primero (el de ellos). */
+function kgDe(t) {
+  const x = String(t || '').match(/(\d+(?:\.\d+)?)\s*(?:\/\s*\d+(?:\.\d+)?)?\s*-?\s*(lbs?|pounds?|kg|pood)\b/);
+  if (!x) return 0;
+  const n = Number(x[1]);
+  return x[2] === 'kg' ? n : x[2] === 'pood' ? n * 16 : n * 0.4536;
+}
+function kgPesoCorporal(t) { const x = String(t || '').match(/(\d+(?:\.\d+)?)?\s*[×x]?\s*bodyweight/); return x ? (Number(x[1]) || 1) * 75 : 0; }
+/* La carga de un movimiento según las cargas de un héroe: "53-lb kettlebell, 95-lb barbell, 24-inch box", "225-lb cleans". */
+function cargaDeTexto(t, m) {
+  if (!t || !m) return 0;
+  const partes = String(t).toLowerCase().split(/,|;| and /);
+  const nombres = [m.nombre].concat(m.en).map((a) => a.toLowerCase());
+  const equipo = /kettlebell|dumbbell|medicine|ball|vest|box|rope|armor|plate|sandbag|rower|bike|target/;
+  const tiene = (p) => kgDe(p) || kgPesoCorporal(p);
+  let p = partes.find((x) => nombres.some((a) => x.indexOf(a) >= 0) && tiene(x));
+  if (!p && m.cat === 'barra') p = partes.find((x) => /barbell/.test(x) && tiene(x)) || partes.find((x) => !equipo.test(x) && tiene(x));
+  if (!p && m.cat === 'mancuerna') {
+    const kb = /^kb|kettlebell|swing|turkish/.test(m.id + ' ' + m.nombre.toLowerCase());
+    p = partes.find((x) => (kb ? /kettlebell/ : /dumbbell/).test(x) && tiene(x)) || partes.find((x) => !equipo.test(x) && tiene(x));
+  }
+  return p ? tiene(p) : 0;
+}
+/* Más kilos que los de referencia, más lento; y a partir de 30 repeticiones seguidas se va parando. */
+function factorCarga(m, kg) {
+  const ref = m.cat === 'barra' ? 43 : m.cat === 'mancuerna' ? 24 : 0;
+  if (!(kg > ref) || !ref) return 1;
+  return Math.min(5, 1 + (m.cat === 'barra' ? 2 : 1.2) * (kg - ref) / ref);
+}
+function factorVolumen(reps) { return Math.min(2.2, 1 + Math.max(0, reps - 30) / 150); }
+/* Cantidad de una línea: {n, u} con u = 'rep' | 'm' | 'cal' | 's'. */
+function cantidadLinea(b) {
+  const lead = b.match(/^(\d[\d,]*(?:\.\d+)?)\s*-?\s*([a-z]+)?/);
+  if (lead) {
+    const u = lead[2] || '';
+    if (UNIDAD_M[u]) return { n: numeroTexto(lead[1]) * UNIDAD_M[u], u: 'm' };
+    if (/^(calories|calorie|cals?)$/.test(u)) return { n: numeroTexto(lead[1]), u: 'cal' };
+    if (/^(seconds?|secs?)$/.test(u)) return { n: numeroTexto(lead[1]), u: 's' };
+    if (/^(minutes?|mins?)$/.test(u)) return { n: numeroTexto(lead[1]) * 60, u: 's' };
+    return { n: numeroTexto(lead[1]), u: 'rep' };
+  }
+  let x;
+  if ((x = b.match(/(\d[\d,]*(?:\.\d+)?)\s*-?\s*(meters?|metres?|miles?|km|k|feet|foot|ft|yards?|m)\b/))) return { n: numeroTexto(x[1]) * UNIDAD_M[x[2]], u: 'm' };
+  if ((x = b.match(/(\d+)\s*-?\s*(calories|calorie|cals?)\b/))) return { n: numeroTexto(x[1]), u: 'cal' };
+  if ((x = b.match(/(\d+)\s*-?\s*(seconds?|secs?|minutes?|mins?)\b/))) return { n: numeroTexto(x[1]) * (/min/.test(x[2]) ? 60 : 1), u: 's' };
+  return null;
+}
+const sinGuiones = (t) => String(t || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
+/* El movimiento de una línea: el alias más largo que aparece como palabra entera. */
+function movEnLinea(b, cands) {
+  const t = ' ' + sinGuiones(b) + ' ';
+  let mejor = null, largo = 0;
+  cands.forEach((m) => {
+    [m.nombre].concat(m.en).forEach((a) => {
+      const al = sinGuiones(a);
+      if (al.length <= largo) return;
+      for (let i = t.indexOf(al); i >= 0; i = t.indexOf(al, i + 1)) {
+        if (!/[a-z]/.test(t[i - 1] || ' ') && /^(s|es)?([^a-z]|$)/.test(t.slice(i + al.length))) { mejor = m; largo = al.length; break; }
+      }
+    });
+  });
+  return mejor;
+}
+/* Segundos que lleva un entreno escrito (el de un héroe, una girl o uno nuestro). */
+function estimaTexto(desc, cargas) {
+  const texto = String(desc || '');
+  const bajo = sinGuiones(texto);
+  const cands = MOVIMIENTOS.filter((m) => m.mu && m.mu.length && [m.nombre].concat(m.en).some((a) => bajo.indexOf(sinGuiones(a)) >= 0));
+  let mult = 1, esquema = 0, seg = 0, cargaNota = 0;
+  texto.split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+    let b = l.toLowerCase().replace(/[“”"]/g, '').replace(/(\d),(\d{3})\b/g, '$1$2').replace(/(\d),(\d{1,2})\b/g, '$1.$2');
+    if (/^rx\b/.test(b)) { cargaNota = kgDe(b) || cargaNota; return; }
+    if (/^then\b/.test(b)) { mult = 1; esquema = 0; b = b.replace(/^then\b[,:]?\s*/, ''); if (!b) return; }
+    let x;
+    if ((x = b.match(/\brest\b\D*(\d+)\s*(minutes?|mins?|seconds?|secs?)/))) { const s = Number(x[1]) * (/min/.test(x[2]) ? 60 : 1); seg += /between/.test(b) ? s * Math.max(0, mult - 1) : s * mult; return; }
+    if ((x = b.match(/^(\d+(?:\s*-\s*\d+)+)\b/)) && (/:$/.test(b) || /\b(reps?|for time|of)\b/.test(b))) { esquema = x[1].split('-').reduce((s, n) => s + Number(n), 0); mult = 1; return; }
+    if ((x = b.match(/\b(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+rounds?\b/)) && (/:$/.test(b) || /rounds?,? (each )?(for time|of)\b/.test(b))) { mult = numeroTexto(x[1]); esquema = 0; return; }
+    if (/:$/.test(b)) return;
+    if (b.length > 70 || /\b(if|partition|score|wear|wearing|start and finish|as needed)\b|\bsplit (the |all )?(work|reps)\b/.test(b)) return;
+    const m = movEnLinea(b, cands); if (!m) return;
+    let q = cantidadLinea(b);
+    if ((!q || (q.u === 'rep' && !/^\d/.test(b))) && esquema) q = { n: esquema, u: 'rep' };
+    if (!q) return;
+    let s;
+    if (q.u === 'm') s = q.n * (SPM[m.id] || 1.5) * (m.id === 'run' && q.n > 1600 ? 1 + (q.n - 1600) / 8000 : 1);
+    else if (q.u === 'cal') s = q.n * (SPC[m.id] || 4.4);
+    else if (q.u === 's') s = q.n;
+    else s = q.n * sprDe(m) * factorCarga(m, kgDe(b) || kgPesoCorporal(b) || cargaDeTexto(cargas, m) || (m.cat === 'barra' ? cargaNota : 0)) * factorVolumen(q.n);
+    seg += (s + clamp(s * 0.25, 1, 8)) * mult;          // más el cambio de un movimiento a otro
+  });
+  return seg;
+}
+/* Minutos que dura un entreno: fijo en AMRAP, EMOM y Tabata; si no, la mediana del club y, si nadie
+   lo ha hecho, una estimación. null si no se puede saber (fuerza, parejas, "máximas reps"...). */
+function estimaMin(w, medianas) {
+  if (!w || w.partner || w.scoreType === 'load' || w.type === 'strength') return null;
+  if (w.type === 'emom' && w.intervalSec && w.rounds && !w.durationMin) return { min: w.intervalSec * w.rounds / 60, fuente: 'fijo' };
+  if (w.type === 'tabata') return { min: ((w.workSec || 20) + (w.restSec == null ? 10 : w.restSec)) * (w.rounds || 8) / 60, fuente: 'fijo' };
+  if (w.durationMin) return { min: w.durationMin, fuente: 'fijo' };
+  if (medianas && medianas[w.id]) return { min: medianas[w.id] / 60, fuente: 'club' };
+  const seg = estimaTexto(w.description, w.loadM);
+  if (!(seg > 30)) return null;
+  const min = seg / 60;
+  return { min: w.timeCapMin ? Math.min(min, w.timeCapMin) : min, fuente: 'estimado' };
+}
+function medianasClub() {
+  const t = {};
+  state.results.forEach((r) => { if (r.scoreType === 'time' && r.finished !== false && r.seconds > 0) (t[r.workoutId] = t[r.workoutId] || []).push(r.seconds); });
+  const out = {};
+  Object.keys(t).forEach((id) => { const v = t[id].sort((a, b) => a - b); const k = Math.floor(v.length / 2); out[id] = v.length % 2 ? v[k] : (v[k - 1] + v[k]) / 2; });
+  return out;
+}
+
+/* ---- cómo tienes cada músculo ---- */
+let _reparto = null;
+/* Reparto típico del trabajo en CrossFit: el de los Héroes y las Girls juntos. */
+function repartoTipico() {
+  if (_reparto) return _reparto;
+  const tot = {}; let suma = 0;
+  builtinWorkouts().forEach((w) => { const p = musculosDe(w); Object.keys(p).forEach((g) => { tot[g] = (tot[g] || 0) + p[g]; suma += p[g]; }); });
+  _reparto = {};
+  MUSCULOS.forEach((x) => { _reparto[x[0]] = suma ? (tot[x[0]] || 0) / suma : 1 / MUSCULOS.length; });
+  return _reparto;
+}
+let _estado = null, _estadoClave = '';
+/* Para cada grupo: fatiga (días desde que fue principal), déficit de carga en 30 días frente al
+   reparto típico, y un valor de -1 (fatigado) a 1 (fresco y poco trabajado). */
+function estadoMuscular(a) {
+  const clave = (a ? a.id : '') + '|' + todayISO() + '|' + state.results.length + '|' + state.results.reduce((m, r) => ((r.updatedAt || '') > m ? r.updatedAt : m), '') + '|' + state.workouts.length;
+  if (_estado && clave === _estadoClave) return _estado;
+  const t30 = trabajoDe(a, '30'), tAll = trabajoDe(a, 'todo');
+  const tipico = repartoTipico(), hoy = todayISO();
+  const suma30 = Object.values(t30.pesos).reduce((s, x) => s + x, 0);
+  const e = { marcas30: t30.marcas, estado: {}, dias: {}, deficit: {}, valor: {} };
+  MUSCULOS.forEach((x) => {
+    const g = x[0];
+    const d = tAll.ultimo[g] ? diasEntre(tAll.ultimo[g], hoy) : null;
+    const estado = d == null ? 'listo' : d <= 1 ? 'fatigado' : d <= 3 ? 'recuperando' : 'listo';
+    const deficit = suma30 ? clamp(1 - ((t30.pesos[g] || 0) / suma30) / (tipico[g] || 0.01), 0, 1) : 1;
+    e.estado[g] = estado; e.dias[g] = d; e.deficit[g] = deficit;
+    e.valor[g] = estado === 'fatigado' ? -1 : estado === 'recuperando' ? 0.15 + 0.25 * deficit : 0.55 + 0.45 * deficit;
+  });
+  _estado = e; _estadoClave = clave;
+  return e;
+}
+/* Lo bien que le viene un entreno a ese estado: de -1 (todo fatigado) a 1 (todo fresco y con falta de trabajo). */
+function encaje(movs, est) {
+  const p = musculosDeMovs(movs);
+  let s = 0, n = 0;
+  Object.keys(p).forEach((g) => { s += p[g] * est.valor[g]; n += p[g]; });
+  return n ? s / n : 0;
+}
+/* Grupos que "tocan": frescos, con falta de trabajo y que pintan algo en CrossFit. */
+function gruposQueTocan(est) {
+  const tip = repartoTipico();
+  return MUSCULOS.map((x) => x[0]).filter((g) => est.estado[g] === 'listo' && est.deficit[g] >= 0.35 && tip[g] >= 0.03).sort((a, b) => est.deficit[b] * tip[b] - est.deficit[a] * tip[a]);
+}
+const listaY = (xs) => xs.length <= 1 ? xs.join('') : xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1];
+const nombresMusc = (gs) => listaY(gs.map((g) => MUSC_NOMBRE[g].toLowerCase()));
+function porQue(movs, est) {
+  const p = musculosDeMovs(movs), prin = {};
+  movs.forEach((m) => (m.mu || []).forEach((g) => { prin[g] = true; }));
+  const orden = Object.keys(prin).sort((a, b) => p[b] - p[a]);
+  const frescos = orden.filter((g) => est.estado[g] === 'listo');
+  const cansados = orden.filter((g) => est.estado[g] === 'fatigado');
+  const descansan = MUSCULOS.map((x) => x[0]).filter((g) => est.estado[g] === 'fatigado' && !prin[g]);
+  let t = frescos.length ? 'Carga ' + nombresMusc(frescos.slice(0, 3)) + (est.marcas30 ? ', que tienes frescos' : '') : 'Trabaja ' + nombresMusc(orden.slice(0, 3));
+  if (cansados.length) t += '. Ojo: también ' + nombresMusc(cansados.slice(0, 3)) + ', que están fatigados';
+  else if (descansan.length) t += ' y deja descansar ' + nombresMusc(descansan.slice(0, 3));
+  return t + '.';
+}
+
+/* ---- entrenos a medida ---- */
+/* Los movimientos de siempre en un box. mod: M monoestructural, G gimnástico, W con peso. */
+const POOL_SUG = [
+  { id: 'run', mod: 'M', u: 'm' }, { id: 'row', mod: 'M', u: 'cal' }, { id: 'bike', mod: 'M', u: 'cal' }, { id: 'ski', mod: 'M', u: 'cal' }, { id: 'double-under', mod: 'M' },
+  { id: 'pull-up', mod: 'G' }, { id: 'c2b', mod: 'G' }, { id: 't2b', mod: 'G' }, { id: 'hspu', mod: 'G' }, { id: 'push-up', mod: 'G' }, { id: 'hr-push-up', mod: 'G' },
+  { id: 'burpee', mod: 'G' }, { id: 'air-squat', mod: 'G' }, { id: 'sit-up', mod: 'G' }, { id: 'ghd', mod: 'G' }, { id: 'v-up', mod: 'G' }, { id: 'k2e', mod: 'G' },
+  { id: 'box-jump', mod: 'G', carga: '60/50 cm' }, { id: 'box-jump-over', mod: 'G', carga: '60/50 cm' }, { id: 'walking-lunge', mod: 'G' }, { id: 'pistol', mod: 'G' },
+  { id: 'ring-dip', mod: 'G' }, { id: 'wall-walk', mod: 'G' }, { id: 'back-extension', mod: 'G' }, { id: 'rope-climb', mod: 'G' },
+  { id: 'muscle-up', mod: 'G', avanzado: true }, { id: 'bar-muscle-up', mod: 'G', avanzado: true },
+  { id: 'thruster', mod: 'W', carga: '43/30 kg' }, { id: 'deadlift', mod: 'W', carga: '80/55 kg' }, { id: 'power-clean', mod: 'W', carga: '60/40 kg' },
+  { id: 'hang-power-clean', mod: 'W', carga: '60/40 kg' }, { id: 'front-squat', mod: 'W', carga: '60/40 kg' }, { id: 'overhead-squat', mod: 'W', carga: '43/30 kg' },
+  { id: 'push-press', mod: 'W', carga: '50/35 kg' }, { id: 'push-jerk', mod: 'W', carga: '60/40 kg' }, { id: 'shoulder-to-overhead', mod: 'W', carga: '50/35 kg' },
+  { id: 'power-snatch', mod: 'W', carga: '43/30 kg' }, { id: 'hang-power-snatch', mod: 'W', carga: '43/30 kg' }, { id: 'clean-and-jerk', mod: 'W', carga: '60/40 kg' },
+  { id: 'sdhp', mod: 'W', carga: '43/30 kg' }, { id: 'kb-swing', mod: 'W', carga: '24/16 kg' }, { id: 'wall-ball', mod: 'W', carga: '9/6 kg' },
+  { id: 'db-snatch', mod: 'W', carga: '22,5/15 kg' }, { id: 'db-thruster', mod: 'W', carga: '2 × 15/10 kg' }, { id: 'devil-press', mod: 'W', carga: '2 × 15/10 kg' },
+  { id: 'goblet-squat', mod: 'W', carga: '24/16 kg' }, { id: 'db-lunge', mod: 'W', carga: '2 × 15/10 kg' }, { id: 'db-push-press', mod: 'W', carga: '2 × 15/10 kg' },
+  { id: 'db-clean', mod: 'W', carga: '2 × 15/10 kg' }, { id: 'kb-deadlift', mod: 'W', carga: '32/24 kg' }, { id: 'ball-slam', mod: 'W', carga: '9/6 kg' },
+];
+const TOPE_REPS = { 'muscle-up': 7, 'bar-muscle-up': 10, 'rope-climb': 4, 'wall-walk': 5, hspu: 15, pistol: 20, 'devil-press': 12, 'clean-and-jerk': 12, deadlift: 15, 'power-clean': 15, 'hang-power-clean': 15, 'front-squat': 15, 'push-jerk': 15, 'power-snatch': 15, 'hang-power-snatch': 15, 'overhead-squat': 15, thruster: 21, 'push-press': 15, 'shoulder-to-overhead': 15, sdhp: 20, 'ring-dip': 20, 'double-under': 100, 'air-squat': 50, 'sit-up': 40, 'push-up': 30, 'hr-push-up': 25, burpee: 20, 'box-jump-over': 20, 'box-jump': 24, 'db-lunge': 24, 'kb-deadlift': 25 };
+const MIN_REPS = { 'muscle-up': 2, 'bar-muscle-up': 3, 'rope-climb': 1, 'wall-walk': 2 };
+const REPS_BONITAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 25, 30, 35, 40, 45, 50, 60, 75, 100];
+const METROS_BONITOS = [100, 200, 300, 400, 500, 600, 800, 1000];
+const CAL_BONITAS = [5, 6, 8, 10, 12, 14, 15, 18, 20, 25, 30];
+const bonito = (n, lista) => lista.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a));
+function cantidadPara(p, seg) {
+  const m = movPorId(p.id);
+  if (p.u === 'm') return String(bonito(seg / (SPM[p.id] || 0.3), METROS_BONITOS));
+  if (p.u === 'cal') return bonito(seg / (SPC[p.id] || 4.4), CAL_BONITAS) + ' cal';
+  let n = clamp(bonito(seg / (sprDe(m) * factorCarga(m, kgDe(p.carga || ''))), REPS_BONITAS), MIN_REPS[p.id] || 3, TOPE_REPS[p.id] || 30);
+  if (/lunge/.test(p.id) && n % 2) n++;
+  return String(n);
+}
+/* Generador reproducible: la misma semilla da las mismas propuestas. */
+function azar(semilla) {
+  let a = 0;
+  String(semilla).split('').forEach((c) => { a = (Math.imul(a, 31) + c.charCodeAt(0)) | 0; });
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const parecidos = (a, b) => a.mu.filter((g) => b.mu.indexOf(g) >= 0).length / Math.min(a.mu.length, b.mu.length) > 0.7;
+/* Elige n movimientos para los músculos que más lo piden, sin repetir patrón y mezclando modalidades. */
+function eligeMovs(est, n, rnd, opc) {
+  const rx = opc.rx || {};
+  const pool = POOL_SUG.filter((p) => {
+    const m = movPorId(p.id), e = (rx[p.id] || {}).estado;
+    if (!m || e === 'no' || (p.avanzado && e !== 'rx')) return false;
+    if (opc.sinDistancia && p.u === 'm') return false;
+    if (opc.sinMaquinas && (p.u === 'm' || p.u === 'cal')) return false;
+    return true;
+  });
+  const libres = pool.filter((p) => !(opc.usados && opc.usados[p.id]));
+  const lista = libres.length >= n + 3 ? libres : pool;          // no repetir entre propuestas mientras haya dónde elegir
+  const elegidos = [], cubierto = {};
+  while (elegidos.length < n) {
+    let mejor = null, mejorS = -Infinity;
+    lista.forEach((p) => {
+      if (elegidos.indexOf(p) >= 0) return;
+      const m = movPorId(p.id);
+      if (p.mod === 'M' && elegidos.some((e) => e.mod === 'M')) return;
+      if (elegidos.some((e) => parecidos(movPorId(e.id), m))) return;
+      let s = 0;
+      m.mu.forEach((g) => { const v = est.valor[g]; s += v > 0 && cubierto[g] ? v * 0.35 : v; });
+      s /= m.mu.length;
+      s -= 0.8 * m.mu.filter((g) => est.estado[g] === 'fatigado').length;     // fatigado como principal: casi fuera
+      m.ms.forEach((g) => { if (est.valor[g] < 0) s += est.valor[g] * PESO_SEC / m.mu.length; });
+      if ((rx[p.id] || {}).estado === 'escalado') s -= 0.15;
+      if (opc.usados && opc.usados[p.id]) s -= 0.35;
+      if (elegidos.length && !elegidos.some((e) => e.mod === p.mod)) s += 0.1;
+      s += (rnd() - 0.5) * 0.3;
+      if (s > mejorS) { mejorS = s; mejor = p; }
+    });
+    if (!mejor) break;
+    elegidos.push(mejor);
+    movPorId(mejor.id).mu.forEach((g) => { cubierto[g] = true; });
+  }
+  return elegidos;
+}
+const bloqueDe = (p, cant) => Object.assign({ cant, mov: p.id }, p.carga ? { carga: p.carga } : {});
+function montaAmrap(D, ps) {
+  const Tr = clamp(30 + 7 * D, 60, 210);
+  const pes = ps.map((p) => (p.mod === 'M' ? 1.3 : 1)), suma = pes.reduce((s, x) => s + x, 0);
+  return { etiqueta: 'AMRAP ' + D + ' min', type: 'amrap', scoreType: 'rounds', durationMin: D, esquema: '', notas: '', min: D,
+    bloques: ps.map((p, i) => bloqueDe(p, cantidadPara(p, (Tr - 5 * ps.length) * pes[i] / suma))) };
+}
+function montaForTime(D, ps) {
+  const cap = D + Math.max(2, Math.round(D * 0.25));
+  const base = { type: 'fortime', scoreType: 'time', timeCapMin: cap, notas: '' };
+  const est = (w) => estimaTexto(generaDescripcion(w)) / 60;
+  if (D <= 9 && ps.every((p) => !p.u)) {                      // corto: esquema de reps, al estilo de Fran
+    let mejor = null;
+    ['9-6-3', '12-9-6', '15-12-9', '21-15-9', '27-21-15-9', '30-20-10', '50-40-30-20-10'].forEach((e) => {
+      const total = e.split('-').reduce((s, n) => s + Number(n), 0);
+      if (ps.some((p) => total > (TOPE_REPS[p.id] || 30) * 3)) return;
+      const w = Object.assign({}, base, { esquema: e, bloques: ps.map((p) => bloqueDe(p, '')) });
+      const min = est(w);
+      if (!mejor || Math.abs(min - D) < Math.abs(mejor.min - D)) mejor = Object.assign(w, { min, etiqueta: e + ' for time' });
+    });
+    if (mejor) return mejor;
+  }
+  const R = D <= 9 ? 2 : D <= 14 ? 3 : D <= 20 ? 4 : 5;
+  const Tr = D * 60 / R;
+  const pes = ps.map((p) => (p.mod === 'M' ? 1.3 : 1)), suma = pes.reduce((s, x) => s + x, 0);
+  const w = Object.assign({}, base, { esquema: String(R), bloques: ps.map((p, i) => bloqueDe(p, cantidadPara(p, (Tr - 5 * ps.length) * pes[i] / suma))) });
+  return Object.assign(w, { min: est(w), etiqueta: R + ' rondas for time' });
+}
+function montaEmom(D, ps) {
+  return { etiqueta: 'EMOM ' + D + ' min', type: 'emom', scoreType: 'reps', intervalSec: 60, rounds: D, esquema: '', min: D,
+    notas: 'Cada minuto, un movimiento: en este orden y vuelta a empezar.', bloques: ps.map((p) => bloqueDe(p, cantidadPara(p, p.mod === 'M' ? 40 : 36))) };
+}
+/* Tres propuestas a medida (AMRAP, for time y EMOM), cada una con movimientos distintos. */
+function sugerenciasAMedida(a, est, D, semilla) {
+  const rx = misRx(a), usados = {}, out = [];
+  const formatos = [
+    ['amrap', D <= 6 ? 2 : D >= 20 ? 4 : 3, {}, montaAmrap],
+    ['fortime', D <= 9 ? 2 : 3, D <= 9 ? { sinMaquinas: true } : {}, montaForTime],
+  ];
+  if (D >= 6) formatos.push(['emom', D >= 12 ? 3 : 2, { sinDistancia: true }, montaEmom]);
+  formatos.forEach((f) => {
+    const ps = eligeMovs(est, f[1], azar(semilla + '|' + f[0]), Object.assign({ rx, usados }, f[2]));
+    if (!ps.length) return;
+    ps.forEach((p) => { usados[p.id] = true; });
+    const b = f[3](D, ps);
+    b.name = 'Sugerido · ' + b.etiqueta;
+    b.modo = 'bloques';
+    b.description = generaDescripcion(b);
+    b.movs = ps.map((p) => movPorId(p.id));
+    out.push(b);
+  });
+  return out;
+}
+
+/* ---- del catálogo ---- */
+let _baseCat = null, _baseCatClave = '';
+function baseCatalogo() {
+  const clave = state.results.length + '|' + state.results.reduce((m, r) => ((r.updatedAt || '') > m ? r.updatedAt : m), '') + '|' + state.workouts.map((w) => w.id + (w.updatedAt || '')).join(',');
+  if (_baseCat && clave === _baseCatClave) return _baseCat;
+  const medianas = medianasClub();
+  _baseCat = allWorkouts().map((w) => {
+    const movs = movimientosDe(w);
+    const e = movs.length ? estimaMin(w, medianas) : null;
+    return e ? { w, movs, min: e.min, fuente: e.fuente } : null;
+  }).filter(Boolean);
+  _baseCatClave = clave;
+  return _baseCat;
+}
+/* Los que duran más o menos D minutos, ordenados por lo bien que encajan con tu estado.
+   Lo que has hecho esta semana no sale; los que piden algo que tienes como "Aún no" bajan. */
+function sugerenciasCatalogo(a, est, D, pagina) {
+  const recientes = {};
+  state.results.forEach((r) => { if (a && r.athleteId === a.id && r.date >= isoHaceDias(6)) recientes[r.workoutId] = true; });
+  const rx = misRx(a), tol = Math.max(2.5, D * 0.35);
+  const lista = [];
+  baseCatalogo().forEach((b) => {
+    if (recientes[b.w.id]) return;
+    const fit = 1 - Math.abs(b.min - D) / tol;
+    if (fit <= 0) return;
+    const noPuede = b.movs.filter((m) => (rx[m.id] || {}).estado === 'no');
+    const s = encaje(b.movs, est);
+    const cargaFatigado = b.movs.some((m) => (m.mu || []).some((g) => est.estado[g] === 'fatigado'));
+    lista.push(Object.assign({ s, fit, noPuede, val: s + 0.3 * fit + (b.w.category !== 'custom' ? 0.05 : 0) - 0.3 * noPuede.length - (cargaFatigado ? 0.4 : 0) }, b));
+  });
+  lista.sort((x, y) => y.val - x.val);
+  const paginas = Math.max(1, Math.ceil(Math.min(lista.length, 18) / 6));
+  const k = (pagina || 0) % paginas;
+  return { total: lista.length, items: lista.slice(k * 6, k * 6 + 6) };
+}
+
+/* ---- la pantalla ---- */
+function leeSugDur() { try { const v = Number(localStorage.getItem(LS_PREFIX + 'sugdur')); return v >= 5 && v <= 25 ? Math.round(v) : 15; } catch (e) { return 15; } }
+function coloresSug(est) {
+  const out = {}, toca = gruposQueTocan(est).slice(0, 5);
+  MUSCULOS.forEach((x) => {
+    const g = x[0];
+    if (est.estado[g] === 'fatigado') out[g] = FATIGA.fatigado;
+    else if (est.estado[g] === 'recuperando') out[g] = FATIGA.recuperando;
+    else if (toca.indexOf(g) >= 0) out[g] = CALOR[3];
+  });
+  return out;
+}
+function descHtml(t) { return String(t || '').split('\n').map((l, i) => (i === 0 && /:$/.test(l.trim())) ? '<span class="head">' + esc(l) + '</span>' : esc(l)).join('\n'); }
+/* Los grupos que carga un entreno, de más a menos, con el color de cómo los tienes. */
+function chipsSug(movs, est) {
+  const p = musculosDeMovs(movs), prin = [];
+  movs.forEach((m) => (m.mu || []).forEach((g) => { if (prin.indexOf(g) < 0) prin.push(g); }));
+  prin.sort((x, y) => p[y] - p[x]);
+  return '<span class="sug-chips">' + prin.slice(0, 6).map((g) => '<span class="' + est.estado[g] + '" data-musculo="' + g + '">' + esc(MUSC_NOMBRE[g]) + '</span>').join('') + '</span>';
+}
+let _sugGeneradas = [], _sugPendiente = false;
+function sugListaHtml(a, est) {
+  const D = state.sugDur, pag = state.sugSeed || 0;
+  const gen = sugerenciasAMedida(a, est, D, todayISO() + '|' + a.id + '|' + pag);
+  const cat = sugerenciasCatalogo(a, est, D, pag);
+  _sugGeneradas = gen;
+  let html = '<section class="sug-sec"><div class="section-head"><h2 class="h-display h2">A tu medida</h2><button class="link" data-action="sug-otras">Otras ideas</button></div>' +
+    '<p class="faint small">Montados para ti con movimientos de siempre, para unos ' + D + ' minutos y apuntando a lo que tienes fresco.</p>' +
+    gen.map((g, i) => '<article class="card sug-card" data-formato="' + g.type + '" data-min="' + Math.round(g.min) + '" data-movs="' + esc(g.movs.map((m) => m.id).join(',')) + '">' +
+      '<div class="meta-line">' + badge('type', TYPE_LABEL[g.type]) + badge('type', (g.type === 'fortime' ? '≈ ' : '') + Math.round(g.min) + ' min') + (g.timeCapMin ? badge('type', 'cap ' + g.timeCapMin + '’') : '') + '</div>' +
+      '<div class="wod-desc">' + descHtml(g.description) + '</div>' + chipsSug(g.movs, est) +
+      '<p class="small muted">' + esc(porQue(g.movs, est)) + '</p>' +
+      '<div class="btn-row"><button class="btn primary sm" data-action="sug-usar" data-i="' + i + '">Usar este entreno</button></div></article>').join('') +
+    '</section>';
+  html += '<section class="sug-sec"><div class="section-head"><h2 class="h-display h2">Del catálogo</h2><span class="eyebrow">≈ ' + D + ' min</span></div>' +
+    '<p class="faint small">Héroes, Girls y los vuestros que duran más o menos eso y le vienen bien a cómo estás. Lo que has hecho esta semana no sale.</p>';
+  if (cat.items.length) {
+    html += '<ul class="list sug-cat">' + cat.items.map((c) => {
+      const w = c.w, cls = w.category === 'hero' ? 'hero' : w.category === 'girl' ? 'girl' : 'custom';
+      return '<li data-id="' + esc(w.id) + '" data-min="' + c.min.toFixed(1) + '"><button class="row pressable" data-action="open-wod" data-id="' + esc(w.id) + '" aria-label="' + esc(w.name) + '">' +
+        '<span class="badge ' + cls + '" style="min-width:52px;justify-content:center">' + (cls === 'hero' ? 'Hero' : cls === 'girl' ? 'Girl' : 'WOD') + '</span>' +
+        '<span><span class="title">' + esc(w.name) + '</span><span class="sub">≈ ' + Math.round(c.min) + ' min' + (c.fuente === 'club' ? ' (lo que tarda el club)' : c.fuente === 'estimado' ? ' (estimado)' : '') + ' · ' + esc(TYPE_LABEL[w.type] || w.type) + ' — ' + esc(firstLine(w)) + '</span>' +
+        chipsSug(c.movs, est) + '<span class="sub por-que">' + esc(porQue(c.movs, est)) + (c.noPuede.length ? ' Pide ' + esc(listaY(c.noPuede.map((m) => m.nombre))) + ', que tienes como «Aún no».' : '') + '</span></span>' +
+        '<span class="chev">' + icon('chev') + '</span></button></li>';
+    }).join('') + '</ul>';
+  } else {
+    html += '<p class="muted">Nada del catálogo dura unos ' + D + ' min y encaja con cómo estás. Prueba con otra duración.</p>';
+  }
+  return html + '</section>';
+}
+function refrescaSug() {
+  const l = $('#sug-lista'), a = me();
+  if (l && a) l.innerHTML = sugListaHtml(a, estadoMuscular(a));
+}
+/* --- ENTRENOS SUGERIDOS --- */
+function viewSugeridos() {
+  const a = me();
+  if (!a) return '<div class="view"><div class="empty"><span class="h-display h2">¿Quién eres?</span><span>Elige tu atleta para ver qué te toca entrenar.</span><button class="btn primary" data-action="pick-athlete">Elegir atleta</button></div></div>';
+  const est = estadoMuscular(a), D = state.sugDur;
+  const grupos = MUSCULOS.map((x) => x[0]);
+  const toca = gruposQueTocan(est).slice(0, 4);
+  const cansados = grupos.filter((g) => est.estado[g] === 'fatigado');
+  const recu = grupos.filter((g) => est.estado[g] === 'recuperando');
+  const tip = repartoTipico();
+  const muyCansado = grupos.filter((g) => tip[g] >= 0.05 && est.estado[g] === 'fatigado').length >= 5;
+  let html = '<div class="view">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow">' + est.marcas30 + ' entreno' + (est.marcas30 === 1 ? '' : 's') + ' en 30 días</span></div>' +
+    '<section class="card"><span class="eyebrow">' + esc(a.name) + '</span><h1 class="h-display h2">Entrenos sugeridos</h1>' +
+    '<p class="muted small">Según lo que has apuntado: lo que tienes fatigado descansa, y lo que menos has trabajado en 30 días (comparado con el reparto de los Héroes y las Girls) pasa delante.</p>' +
+    '<div class="sug-dur"><div class="sug-dur-cab"><label for="sug-dur" class="label">¿Cuánto tiempo tienes?</label><output id="sug-dur-val" for="sug-dur">' + D + ' min</output></div>' +
+    '<input type="range" id="sug-dur" min="5" max="25" step="1" value="' + D + '" aria-label="Duración del entreno en minutos">' +
+    '<div class="sug-marcas" aria-hidden="true"><span>5’</span><span>10’</span><span>15’</span><span>20’</span><span>25’</span></div></div>' +
+    cuerpoSvg(coloresSug(est)) + leyenda([[FATIGA.fatigado, 'Fatigado'], [FATIGA.recuperando, 'Recuperando'], [CALOR[3], 'Toca'], ['var(--cuerpo-base)', 'Listo']]);
+  if (est.marcas30 || cansados.length || recu.length) {
+    html += '<div class="sug-estado">' +
+      (toca.length ? '<p class="small"><b>Toca:</b> ' + esc(listaY(toca.map((g) => MUSC_NOMBRE[g]))) + '</p>' : '') +
+      (cansados.length ? '<p class="small"><b>Descansan:</b> ' + esc(listaY(cansados.map((g) => MUSC_NOMBRE[g]))) + '</p>' : '') +
+      (recu.length ? '<p class="small"><b>Recuperando:</b> ' + esc(listaY(recu.map((g) => MUSC_NOMBRE[g]))) + '</p>' : '') + '</div>';
+  } else {
+    html += '<p class="muted small">No has apuntado nada en 30 días: todo está fresco. En cuanto apuntes, las sugerencias se ajustan a tu carga y a tu fatiga.</p>';
+  }
+  if (muyCansado) html += '<div class="banner"><span class="dot"></span><span>Tienes medio cuerpo fatigado: hoy mejor algo suave, o descansar.</span></div>';
+  html += '</section><div id="sug-lista">' + sugListaHtml(a, est) + '</div></div>';
+  return html;
+}
+
+/* ============================================================
    Entrenos por bloques: reps + movimiento de la lista + carga
    ============================================================ */
 const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;
-const SIN_PLURAL = { 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1, 'yoke-carry': 1, 'front-rack-carry': 1 };
+const PLURAL_ESP = { c2b: 'Chest-to-bar pull-ups' };
+const SIN_PLURAL = { k2e: 1, 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1, 'yoke-carry': 1, 'front-rack-carry': 1 };
 const normaliza = (t) => String(t || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 /* Busca según se escribe: primero los que empiezan así, luego los que lo contienen. */
 function buscaMovimientos(q) {
@@ -2485,6 +2976,7 @@ function movPorNombre(texto) {
 function plural(m, cant) {
   const n = parseInt(String(cant || '').trim(), 10);
   if (n === 1 || m.tipo === 'nota' || SIN_PLURAL[m.id]) return m.nombre;
+  if (PLURAL_ESP[m.id]) return PLURAL_ESP[m.id];
   const s = m.nombre;
   if (/[^aeiou]y$/i.test(s)) return s.slice(0, -1) + 'ies';
   if (/(s|x|ch|sh)$/i.test(s)) return s + 'es';
@@ -2636,8 +3128,8 @@ function pintaPreviewEntreno() {
   const texto = generaDescripcion(leerFormEntreno());
   p.innerHTML = texto ? texto.split('\n').map((l, i) => (i === 0 && /:$/.test(l.trim())) ? '<span class="head">' + esc(l) + '</span>' : esc(l)).join('\n') : '<span class="faint">Añade movimientos y aquí verás cómo queda.</span>';
 }
-function openWorkoutForm(existing, presetDate) {
-  const w = existing || { name: '', type: 'fortime', scoreType: 'time', durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: 10, workSec: 20, restSec: 10, description: '', scheduledDate: presetDate || '', esquema: '', bloques: [], notas: '' };
+function openWorkoutForm(existing, presetDate, borrador) {
+  const w = existing || Object.assign({ name: '', type: 'fortime', scoreType: 'time', durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: 10, workSec: 20, restSec: 10, description: '', scheduledDate: presetDate || '', esquema: '', bloques: [], notas: '' }, borrador || {});
   const porBloques = !existing || existing.modo === 'bloques' || !existing.description;   // los escritos a mano se abren como texto
   const filas = (w.bloques && w.bloques.length ? w.bloques : [{}]).map(filaMovHtml).join('');
   const body =
@@ -2819,7 +3311,7 @@ function render() {
   renderizando = true;
   try {
     renderTopbar(); renderTabs();
-    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos };
+    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos, sugeridos: viewSugeridos };
     $('#main').innerHTML = (views[state.view] || viewHome)();
     afterRenderTimer();
     if (state.view === 'rx' && state.rxSearch) aplicaFiltroRx();
@@ -3001,6 +3493,14 @@ const ACTIONS = {
   'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
   'musculo': (el) => abreMusculo(el.dataset.id),
+  'sug-otras': () => { state.sugSeed = (state.sugSeed || 0) + 1; refrescaSug(); },
+  'sug-usar': (el) => {
+    const g = _sugGeneradas[Number(el.dataset.i)]; if (!g) return;
+    if (!me()) { openPickAthlete(); return; }
+    const hoy = todayISO();
+    openWorkoutForm(null, hoy, { name: g.name, type: g.type, scoreType: g.scoreType, durationMin: g.durationMin || 12, timeCapMin: g.timeCapMin || 0, intervalSec: g.intervalSec || 60,
+      rounds: g.rounds || 10, esquema: g.esquema || '', bloques: g.bloques.map((b) => Object.assign({}, b)), notas: g.notas || '', scheduledDate: hoy });
+  },
   'musc-tab': (el) => { state.muscTab = el.dataset.tab; render(); },
   'musc-periodo': (el) => { state.muscPeriodo = el.dataset.periodo; render(); },
   'rx-pct': (el) => fijaPct(Number(el.dataset.v) || 100),
@@ -3061,6 +3561,14 @@ async function boot() {
     const t = e.target;
     if (t.id === 'wod-search') { state.search = t.value; const l = $('#wod-list'); if (l) l.innerHTML = wodListHtml(); return; }
     if (t.id === 'rx-search') { state.rxSearch = t.value; aplicaFiltroRx(); return; }
+    if (t.id === 'sug-dur') {                                  // la lista se rehace al deslizar, sin tocar el control
+      const v = clamp(Math.round(Number(t.value) || 15), 5, 25);
+      state.sugDur = v;
+      try { localStorage.setItem(LS_PREFIX + 'sugdur', String(v)); } catch (e2) { }
+      const o = $('#sug-dur-val'); if (o) o.textContent = v + ' min';
+      if (!_sugPendiente) { _sugPendiente = true; requestAnimationFrame(() => { _sugPendiente = false; refrescaSug(); }); }
+      return;
+    }
     if (t.classList && t.classList.contains('mv-q')) { t.dataset.mov = ''; abreListaMov(t); }   // se filtra según se escribe
     if (t.closest && t.closest('.sheet') && $('#w-preview')) pintaPreviewEntreno();
   });
@@ -3105,7 +3613,8 @@ async function boot() {
       if (col === 'results') state.results.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
       if (col === 'athletes' && state.meId && !athleteById(state.meId)) setMe(null);
       const tecleandoRx = state.view === 'rx' && (state.rxEditando || (document.activeElement && document.activeElement.closest('.rx-list, .rx-search')));   // los campos ya están al día: no quitar el foco
-      if (tecleandoRx) { /* nada */ }
+      const deslizando = state.view === 'sugeridos' && document.activeElement && document.activeElement.id === 'sug-dur';
+      if (tecleandoRx || deslizando) { /* nada */ }
       else if (state.view !== 'timer' || timer.status === 'idle') render();
       if (col === 'athletes' && !state.promptedProfile && !state.meId) {
         state.promptedProfile = true;

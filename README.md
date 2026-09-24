@@ -113,6 +113,16 @@ Cada movimiento del catálogo lleva sus **músculos principales y secundarios** 
 
 El dibujo del cuerpo viene de [react-native-body-highlighter](https://github.com/HichamELBSI/react-native-body-highlighter) (MIT, © 2022 ELABBASSI Hicham; licencia en `data/cuerpo.LICENSE`), convertido a `data/cuerpo.json`.
 
+## Entrenos sugeridos
+
+**Perfil → Entrenos sugeridos** propone qué hacer hoy según lo que has apuntado y el tiempo que tienes (un deslizador de **5 a 25 minutos**, que se recuerda):
+
+- **Cómo estás**: el cuerpo con lo **fatigado** (principal en una marca de hoy o ayer), lo que está **recuperando** (hasta tres días) y lo que **toca**: frescos y con falta de trabajo en los últimos 30 días, comparando tu reparto con el típico de los Héroes y las Girls. Si tienes medio cuerpo fatigado, lo avisa.
+- **A tu medida**: un AMRAP, un for time y un EMOM (este desde 6 min) montados con movimientos de siempre para esa duración, cada uno con movimientos distintos, eligiendo lo que tienes fresco y sin tocar lo fatigado. Las reps salen del ritmo de un atleta medio y de la carga Rx (43/30 kg el thruster, 24/16 kg la kettlebell…); en los for time cortos usa esquemas tipo 21-15-9. No propone lo que tienes como «Aún no» en Mis Rx, ni muscle-ups si no los tienes como Rx. **Usar este entreno** abre el formulario relleno y programado para hoy, para retocarlo y guardarlo. **Otras ideas** baraja otras propuestas.
+- **Del catálogo**: Héroes, Girls y los vuestros que duran más o menos ese tiempo, ordenados por lo bien que le vienen a tu estado; lo que has hecho esta semana no sale, y los que piden algo que tienes como «Aún no» bajan y lo avisan.
+
+La duración de los entrenos del catálogo es fija en los AMRAP, EMOM y Tabata; en los for time es **lo que tarda el club** (la mediana de las marcas terminadas) y, si nadie lo ha hecho, una **estimación** a partir de la prescripción (reps, distancias, cargas y descansos al ritmo de un atleta medio: Fran ≈ 5 min, Helen ≈ 11, DT ≈ 14, Angie ≈ 22, Murph ≈ 57). Los de pareja y los de fuerza no se sugieren.
+
 ## Cronómetro
 
 For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
@@ -130,7 +140,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `sugeridos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js

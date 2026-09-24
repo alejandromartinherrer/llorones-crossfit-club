@@ -867,3 +867,27 @@ details[open] > summary::after { content: "–"; }
 .acciones { display: inline-flex; gap: 2px; }
 .feed-li { display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .feed-li > .icon-btn { margin-right: 8px; }
+
+/* ---------- entrenos sugeridos ---------- */
+.sug-dur { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 6px; }
+.sug-dur-cab { display: flex; justify-content: space-between; align-items: baseline; }
+.sug-dur-cab .label { font-family: var(--font-cond); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.sug-dur output { font-family: var(--font-display); font-size: 34px; line-height: 1; color: var(--text); }
+.sug-dur input[type="range"] { width: 100%; height: 32px; accent-color: var(--accent); margin: 0; }
+.sug-marcas { display: flex; justify-content: space-between; font-family: var(--font-cond); font-size: 12px; color: var(--faint); padding: 0 2px; }
+.sug-estado { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.sug-estado b { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; color: var(--muted); margin-right: 4px; }
+.sug-sec { display: flex; flex-direction: column; gap: 10px; }
+.sug-card { display: flex; flex-direction: column; gap: 10px; }
+.sug-card .wod-desc { font-size: 15px; }
+.sug-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.sug-chips span { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12px; color: var(--muted); }
+.sug-chips .listo { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); color: var(--text); }
+.sug-chips .recuperando { border-color: color-mix(in srgb, #f5c518 60%, var(--line)); }
+.sug-chips .fatigado { border-color: color-mix(in srgb, #ef4444 65%, var(--line)); color: color-mix(in srgb, #ef4444 70%, var(--text)); }
+.sug-cat .row { align-items: start; }
+.sug-cat .row > .badge { margin-top: 2px; }
+.sug-cat .row > span:nth-child(2) { min-width: 0; }       /* que el texto se ajuste al ancho en vez de salirse */
+.sug-cat .sub { display: block; }
+.sug-cat .por-que { white-space: normal; }
+.sug-cat .por-que { color: var(--faint); font-size: 12px; margin-top: 2px; }
