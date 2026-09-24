@@ -16,7 +16,10 @@ js = js.replace('/*__HEROES__*/[]', () => safe(heroes)).replace('/*__GIRLS__*/[]
 const out = html.replace('/*__CSS__*/', () => css).replace('/*__JS__*/', () => js);
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist/index.html'), out);
+// version.json: la app lo consulta para saber si hay una versión más nueva publicada (se sube junto a index.html)
+const version = (js.match(/const APP_VERSION = '([\d.]+)'/) || [])[1] || '';
+fs.writeFileSync(path.join(root, 'dist/version.json'), JSON.stringify({ version }) + '\n');
 // versión para Artifact (sin doctype/html/head/body: el publicador la envuelve)
 const inner = out.replace(/^[\s\S]*?<head>/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '').replace(/<meta charset="utf-8">\s*/, '').replace(/<meta name="viewport"[^>]*>\s*/, '');
 fs.writeFileSync(path.join(root, 'dist/artifact.html'), inner);
-console.log('dist/index.html', (out.length / 1024).toFixed(0) + ' KB', '· heroes', heroes.length, '· girls', girls.length, '· movimientos', movimientos.length);
+console.log('dist/index.html', (out.length / 1024).toFixed(0) + ' KB', '· v' + version, '· heroes', heroes.length, '· girls', girls.length, '· movimientos', movimientos.length);

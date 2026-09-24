@@ -907,6 +907,10 @@ details[open] > summary::after { content: "–"; }
 .sug-cat .por-que { white-space: normal; }
 .sug-cat .por-que { color: var(--faint); font-size: 12px; margin-top: 2px; }
 
+/* ---------- aviso de versión nueva ---------- */
+.aviso-version { margin-bottom: 14px; }
+.aviso-version .btn { margin-left: auto; flex: none; }
+
 </style>
 </head>
 <body>
@@ -945,7 +949,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.9.1';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -1332,6 +1336,7 @@ const state = {
   muscPeriodo: '30',               // Tus músculos: semana | 30 | 90 | todo
   sugDur: leeSugDur(),             // Entrenos sugeridos: minutos que tienes (5-25)
   sugSeed: 0,                      // Entrenos sugeridos: "Otras ideas" cambia la semilla
+  versionNueva: '',                // versión publicada más nueva que la que corre, si la hay
 };
 const athleteById = (id) => state.athletes.find((a) => a.id === id) || null;
 /* ---- quién puede qué (dentro de la app) ---- */
@@ -2916,6 +2921,54 @@ function refrescaSug() {
   const l = $('#sug-lista'), a = me();
   if (l && a) l.innerHTML = sugListaHtml(a, estadoMuscular(a));
 }
+/* ============================================================
+   Versión nueva publicada
+   GitHub Pages deja la página 10 minutos en caché (y el móvil a veces más). Al abrir la app y al
+   volver a ella se mira version.json: si hay otra versión, se recarga sola si no estás a medias
+   (con una hoja abierta, el crono en marcha, escribiendo o subiendo); si lo estás, se avisa.
+   ============================================================ */
+let _ultimaComprobacion = 0;
+function esMasNueva(a, b) {
+  const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+  return false;
+}
+function sePuedeRecargar() {
+  const ae = document.activeElement;
+  return !$('#sheet-root').firstChild && (timer.status === 'idle' || timer.status === 'done') &&
+    !(state.store && state.store.status && state.store.status().busy) && !(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+}
+async function buscaVersionNueva(forzar) {
+  if (!/^https?:$/.test(location.protocol)) return;
+  const ahora = Date.now();
+  if (!forzar && ahora - _ultimaComprobacion < 60000) return;
+  _ultimaComprobacion = ahora;
+  let v = '';
+  try {
+    const r = await fetch('version.json?t=' + ahora, { cache: 'no-store' });
+    if (!r.ok) return;
+    v = String((await r.json()).version || '');
+  } catch (e) { return; }
+  if (!esMasNueva(v, APP_VERSION)) { if (state.versionNueva) { state.versionNueva = ''; render(); } return; }
+  state.versionNueva = v;
+  if (sePuedeRecargar()) actualizaApp(); else render();
+}
+/* Primero una recarga normal; si el móvil insiste en la copia vieja, se pide la página con otra
+   dirección. Como mucho dos intentos por versión y sesión: nunca en bucle. */
+function actualizaApp() {
+  const v = state.versionNueva; if (!v) return;
+  let n = 0;
+  try { const g = JSON.parse(sessionStorage.getItem(LS_PREFIX + 'actualizando') || '{}'); n = g.v === v ? g.n || 0 : 0; } catch (e) { }
+  if (n >= 2) { render(); return; }                            // ya se intentó: se queda el aviso con su botón
+  try { sessionStorage.setItem(LS_PREFIX + 'actualizando', JSON.stringify({ v, n: n + 1 })); } catch (e) { }
+  if (n === 0) location.reload();
+  else location.replace(location.pathname + '?v=' + encodeURIComponent(v));
+}
+function avisoVersion() {
+  if (!state.versionNueva) return '';
+  return '<div class="banner live aviso-version"><span class="dot"></span><span>Hay una versión nueva de la app (' + esc(state.versionNueva) + ').</span><button class="btn sm" data-action="actualizar-app">Actualizar</button></div>';
+}
+
 /* --- ENTRENOS SUGERIDOS --- */
 function viewSugeridos() {
   const a = me();
@@ -3312,7 +3365,7 @@ function render() {
   try {
     renderTopbar(); renderTabs();
     const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos, sugeridos: viewSugeridos };
-    $('#main').innerHTML = (views[state.view] || viewHome)();
+    $('#main').innerHTML = avisoVersion() + (views[state.view] || viewHome)();
     afterRenderTimer();
     if (state.view === 'rx' && state.rxSearch) aplicaFiltroRx();
   } finally { renderizando = false; }
@@ -3493,6 +3546,10 @@ const ACTIONS = {
   'gh-forget': async () => { if (await confirmSheet('Quitar código', 'Este móvil pasará a solo lectura: verás las marcas de todos, pero las tuyas no se compartirán.', 'Quitar')) { state.store.setToken(''); dismissSheet(); render(); } else dismissSheet(); },
   'gh-sync': () => { state.store.pull(); toast('Sincronizando…'); },
   'musculo': (el) => abreMusculo(el.dataset.id),
+  'actualizar-app': () => {
+    try { sessionStorage.removeItem(LS_PREFIX + 'actualizando'); } catch (e) { }
+    location.replace(location.pathname + '?v=' + encodeURIComponent(state.versionNueva || APP_VERSION) + '&r=' + Date.now());
+  },
   'sug-otras': () => { state.sugSeed = (state.sugSeed || 0) + 1; refrescaSug(); },
   'sug-usar': (el) => {
     const g = _sugGeneradas[Number(el.dataset.i)]; if (!g) return;
@@ -3592,7 +3649,8 @@ async function boot() {
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.closest('.sheet')) { const btn = $('.sheet-foot .btn.primary'); if (btn && e.target.type !== 'number') { e.preventDefault(); btn.click(); } }
   });
   $$('#tabbar .tab').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
-  try { history.replaceState({ view: 'home', params: {} }, ''); } catch (e) { }
+  try { history.replaceState({ view: 'home', params: {} }, '', /[?&](v|r)=/.test(location.search) ? location.pathname : undefined); } catch (e) { }   // sin el ?v= de una actualización
+  try { const g = JSON.parse(sessionStorage.getItem(LS_PREFIX + 'actualizando') || '{}'); if (g.v && !esMasNueva(g.v, APP_VERSION)) sessionStorage.removeItem(LS_PREFIX + 'actualizando'); } catch (e) { }
   window.addEventListener('popstate', (e) => {          // el atrás del móvil cierra la hoja o vuelve atrás en la app
     if ($('#sheet-root').firstChild) { closeSheet(); return; }
     const st = e.state;
@@ -3605,6 +3663,9 @@ async function boot() {
   state.meId = readMe();
   render();
   state.store = await chooseStore();
+  setTimeout(() => buscaVersionNueva(true), 1200);                       // ¿hay una versión más nueva publicada?
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') buscaVersionNueva(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) buscaVersionNueva(true); });
   if (state.store.onStatus) state.store.onStatus(() => { if ((state.view === 'home' || state.view === 'profile') && !$('#sheet-root').firstChild) render(); });
   COLS.forEach((col) => {
     state.store.subscribe(col, (docs) => {

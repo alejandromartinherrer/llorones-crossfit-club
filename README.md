@@ -137,13 +137,14 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | Archivo | Rol |
 |---|---|
 | `index.html` | La app completa, generada por `build.js` |
+| `version.json` | La versión publicada, generada por `build.js`. La app la mira al abrirse y al volver a ella: si hay una más nueva, se recarga sola (o avisa con un botón si estás a medias), para no quedarse con la copia en caché |
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `sugeridos`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js
 ```
 
-Al cambiar algo: editar `src/`, ejecutar el build, subir `index.html` a `main`. Pages publica en un minuto. La rama `data` solo la toca la app.
+Al cambiar algo: editar `src/`, subir `APP_VERSION`, ejecutar el build y subir a `main` **`index.html` y `version.json` juntos**. Pages publica en un minuto y los móviles se ponen al día solos al abrir la app. La rama `data` solo la toca la app.

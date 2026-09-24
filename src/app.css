@@ -891,3 +891,7 @@ details[open] > summary::after { content: "–"; }
 .sug-cat .sub { display: block; }
 .sug-cat .por-que { white-space: normal; }
 .sug-cat .por-que { color: var(--faint); font-size: 12px; margin-top: 2px; }
+
+/* ---------- aviso de versión nueva ---------- */
+.aviso-version { margin-bottom: 14px; }
+.aviso-version .btn { margin-left: auto; flex: none; }
