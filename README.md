@@ -42,12 +42,12 @@ Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
 | Hacerlo Rx (la casilla viene marcada: quítala si escalaste) | +5 |
 | Hero WOD | +10 |
 | Benchmark (Girls) | +5 |
-| Mejorar tu marca (PR) | +5 |
+| Mejorar tu mejor marca de días anteriores en ese entreno (PR) | +5 |
 | Semana activa (3 días o más con entreno) | +5 |
 
 El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor marca del club se lleva los 40 y el resto la parte proporcional. La mitad de rondas, la mitad de kilos o el doble de tiempo son la mitad de puntos. Así 20 rondas no valen lo mismo que 2, ni 10 minutos lo mismo que 20.
 
-Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. Un mismo entreno solo suma una vez al día; las marcas extra de ese día solo cuentan para el PR. Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
+Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. Cada atleta tiene **una marca por entreno y día**: si apunta otra ese día, la app le ofrece cambiar la que tenía en vez de duplicarla (y si quedara alguna repetida de antes, cuenta la última apuntada, las demás salen como «Repetida» y quien administra las borra desde Perfil). El **PR** es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Hacerlo Rx cuando antes fue escalado también cuenta como mejora. Los tiempos se apuntan en minutos y segundos (1 h 15 min son 75:00). Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
 
 ## Quién puede qué
 
@@ -141,7 +141,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `marcas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js

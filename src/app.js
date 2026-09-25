@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.2';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -533,7 +533,7 @@ const RULES = [
   ['Hacerlo Rx', '+5'],
   ['Si es un Hero WOD', '+10'],
   ['Si es un benchmark (Girls)', '+5'],
-  ['Mejorar tu marca (PR)', '+5'],
+  ['Mejorar tu mejor marca de días anteriores (PR)', '+5'],
   ['Semana activa (3 días o más)', '+5'],
 ];
 
@@ -563,7 +563,7 @@ function rendimientosDeEntreno(mejorPorAtleta) {
   return out;
 }
 function computeStandings(period) {
-  const valid = state.results.filter((r) => athleteById(r.athleteId) && marcaValida(r));
+  const valid = state.results.filter((r) => athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r));   // una por atleta, entreno y día
   const inP = (r) => periodContains(period, r.date);
   const pr = valid.filter(inP);
   const per = {};
@@ -612,13 +612,36 @@ function computeStandings(period) {
 }
 function wodBoard(workoutId) {
   const bestBy = {};
-  state.results.filter((r) => r.workoutId === workoutId && athleteById(r.athleteId) && marcaValida(r)).forEach((r) => {
+  state.results.filter((r) => r.workoutId === workoutId && athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r)).forEach((r) => {
     if (!bestBy[r.athleteId] || compareResults(r, bestBy[r.athleteId]) < 0) bestBy[r.athleteId] = r;
   });
   return Object.values(bestBy).sort(compareResults);
 }
+/* Una marca por atleta, entreno y día. Si hay más (una corrección apuntada como marca nueva),
+   cuenta la última que se apuntó y las demás son "repetidas": no suman, no salen en la pizarra
+   ni en los músculos, y quien administra puede borrarlas de una vez. */
+let _cuentan = null, _cuentanClave = '';
+function marcasQueCuentan() {
+  const clave = state.results.length + '|' + state.results.reduce((m, r) => ((r.updatedAt || '') > m ? r.updatedAt : m), '');
+  if (_cuentan && clave === _cuentanClave) return _cuentan;
+  const elegida = {};
+  state.results.forEach((r) => {
+    const k = r.athleteId + '|' + r.workoutId + '|' + r.date, o = elegida[k];
+    const vr = marcaValida(r), vo = o && marcaValida(o);
+    if (!o || (vr && !vo) || (vr === vo && (r.createdAt || '') > (o.createdAt || ''))) elegida[k] = r;
+  });
+  _cuentan = {};
+  Object.keys(elegida).forEach((k) => { _cuentan[elegida[k].id] = true; });
+  _cuentanClave = clave;
+  return _cuentan;
+}
+function esRepetida(r) { return !!r && !!r.id && state.results.some((x) => x.id === r.id) && !marcasQueCuentan()[r.id]; }
+function marcasRepetidas() { return state.results.filter((r) => athleteById(r.athleteId) && esRepetida(r)); }
+/* PR: mejorar tu mejor marca de días anteriores en ese entreno. La primera vez que lo haces no
+   es PR, y una corrección del mismo día tampoco. */
 function isPR(result) {
-  const prev = state.results.filter((r) => r.athleteId === result.athleteId && r.workoutId === result.workoutId && r.id !== result.id && (r.date + (r.createdAt || '')) < (result.date + (result.createdAt || '')));
+  if (!marcaValida(result) || esRepetida(result)) return false;
+  const prev = state.results.filter((r) => r.athleteId === result.athleteId && r.workoutId === result.workoutId && r.id !== result.id && r.date < result.date && marcaValida(r) && !esRepetida(r));
   if (!prev.length) return false;
   return prev.every((p) => compareResults(result, p) < 0);
 }
@@ -861,7 +884,7 @@ function viewHome() {
       const a = athleteById(r.athleteId);
       return '<li class="feed-li"><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + r.workoutName + ', ' + fmtScore(r)) + '">' + avatar(a) +
         '<span><span class="what"><b>' + esc(a ? a.name : '?') + '</b> · ' + esc(r.workoutName) + '</span><br><span class="when">' + esc(relDate(r.date)) + (r.notes ? ' · ' + esc(r.notes) : '') + '</span></span>' +
-        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (!marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button>' + (puedoBorrarResultado(r) ? '<button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button>' : '') + '</li>';
+        '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (esRepetida(r) ? badge('nocuenta', 'Repetida') : !marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button>' + (puedoBorrarResultado(r) ? '<button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<div class="empty"><span class="h-display h2">Pizarra en blanco</span><span>Apunta el primer tiempo de la cuadrilla.</span><button class="btn primary" data-action="log-result">Apuntar resultado</button></div>';
@@ -951,7 +974,7 @@ function viewWod() {
   if (m) {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus marcas</h2></div>';
     if (mine.length) {
-      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (!marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></span></li>').join('') + '</ul>';
+      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (esRepetida(r) ? ' ' + badge('nocuenta', 'Repetida') : !marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></span></li>').join('') + '</ul>';
     } else {
       html += '<p class="muted">Todavía no tienes marca en este entreno.</p>';
     }
@@ -983,7 +1006,7 @@ function viewRanking() {
     }).join('') + '</ul>';
   }
   html += '<details class="card"><summary><span class="eyebrow">Cómo se puntúa</span></summary><div class="rules" style="margin-top:10px">' + RULES.map((r) => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
-    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. El <b>rendimiento</b> compara tu marca con la mejor del club en ese entreno: quien la tiene se lleva los 40, y el resto la parte proporcional (la mitad de tiempo, la mitad de rondas o la mitad de kilos son la mitad de puntos). Si eres el único que lo ha hecho cuenta a la mitad, hasta que otro lo haga. Una marca sin terminar (time cap) no pasa de la mitad. Un mismo entreno solo suma una vez al día; las marcas extra de ese día solo cuentan para el PR. Los puntos se recalculan en vivo.</p></details></div>';
+    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. El <b>rendimiento</b> compara tu marca con la mejor del club en ese entreno: quien la tiene se lleva los 40, y el resto la parte proporcional (la mitad de tiempo, la mitad de rondas o la mitad de kilos son la mitad de puntos). Si eres el único que lo ha hecho cuenta a la mitad, hasta que otro lo haga. Una marca sin terminar (time cap) no pasa de la mitad. Cada uno tiene una marca por entreno y día. El PR es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Los puntos se recalculan en vivo.</p></details></div>';
   return html;
 }
 
@@ -1059,6 +1082,10 @@ function viewProfile() {
       '<ul class="list" style="border:0">' + state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) =>
         '<li><div class="row"><span>' + avatar(a, 'sm') + '</span><span><span class="title">' + esc(a.name) + (tienePin(a) ? ' 🔒' : '') + '</span><span class="sub">' + (esAdmin(a) ? 'Administra el club' : 'Atleta') + (soyYo(a.id) ? ' · eres tú' : '') + '</span></span>' +
         '<button class="btn ghost sm" data-action="edit-athlete" data-id="' + esc(a.id) + '">' + icon('pen') + 'Editar</button></div></li>').join('') + '</ul>' +
+      (function () {
+        const r = marcasRepetidas(), n = r.length;
+        return n ? '<div class="banner"><span class="dot"></span><span>' + n + ' marca' + (n === 1 ? '' : 's') + ' repetida' + (n === 1 ? '' : 's') + ' (mismo atleta, entreno y día). Solo cuenta la última apuntada.</span><button class="btn sm danger" data-action="borrar-repetidas">Borrar</button></div>' : '';
+      })() +
       '<p class="faint small">Esto ordena quién toca qué dentro de la app, pero no es un candado: todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede saltárselo editando los datos en GitHub. Entre amigos sobra; para más, haría falta un servidor.</p></section>';
   }
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Nube</h2></div>';
@@ -1353,8 +1380,8 @@ function workoutOptions(selected) {
 function scoreFields(scoreType, pre) {
   pre = pre || {};
   if (scoreType === 'time') {
-    const s = pre.seconds || 0; const h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
-    return '<div class="field"><span class="label">Tiempo</span><div class="time-input" style="grid-template-columns:1fr auto 1fr auto 1fr"><input type="number" id="f-h" min="0" max="23" placeholder="h" value="' + (h || '') + '" inputmode="numeric"><span class="colon">:</span><input type="number" id="f-m" min="0" max="59" placeholder="min" value="' + (pre.seconds != null ? mm : '') + '" inputmode="numeric"><span class="colon">:</span><input type="number" id="f-s" min="0" max="59" placeholder="seg" value="' + (pre.seconds != null ? ss : '') + '" inputmode="numeric"></div></div>' +
+    const s = pre.seconds || 0; const mm = Math.floor(s / 60), ss = s % 60;
+    return '<div class="field"><span class="label">Tiempo (min : seg)</span><div class="time-input"><input type="number" id="f-m" min="0" max="999" placeholder="min" value="' + (pre.seconds != null ? mm : '') + '" inputmode="numeric" aria-label="Minutos"><span class="colon">:</span><input type="number" id="f-s" min="0" max="59" placeholder="seg" value="' + (pre.seconds != null ? ss : '') + '" inputmode="numeric" aria-label="Segundos"></div><span class="hint">Si pasa de una hora, en minutos: 1 h 15 min son 75:00.</span></div>' +
       '<label class="check"><input type="checkbox" id="f-capped" data-action="toggle-capped"' + (pre.finished === false ? ' checked' : '') + '> No lo terminé (time cap)</label>' +
       '<div class="field" id="f-capped-reps"' + (pre.finished === false ? '' : ' hidden') + '><label for="f-reps">Reps completadas al llegar al cap</label><input type="number" id="f-reps" min="0" value="' + (pre.reps || '') + '" inputmode="numeric"></div>';
   }
@@ -1384,22 +1411,32 @@ function openLogResult(workoutId, pre, editId) {
   openSheet({ title: existente ? 'Editar marca' : 'Apuntar resultado', body, foot: (existente && puedoBorrarResultado(existente) ? '<button class="btn danger" data-action="delete-result" data-id="' + esc(existente.id) + '" aria-label="Borrar marca">' + icon('trash') + '</button>' : '') + '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-result">Guardar</button>' });
 }
 function readTime() {
-  const h = Number($('#f-h').value || 0), m = Number($('#f-m').value || 0), s = Number($('#f-s').value || 0);
-  if ([h, m, s].some((n) => isNaN(n) || n < 0) || m > 59 || s > 59) return null;
-  return Math.round(h * 3600 + m * 60 + s);
+  const m = Number($('#f-m').value || 0), s = Number($('#f-s').value || 0);
+  if ([m, s].some((n) => isNaN(n) || n < 0) || s > 59 || m > 999) return null;
+  return Math.round(m * 60 + s);
 }
-async function saveResult() {
+async function saveResult(reemplazaId) {
   const err = $('#f-error'); err.textContent = '';
   const wid = $('#f-wod').value; const w = getWorkout(wid);
   if (!w) { err.textContent = 'Elige un entreno.'; return; }
   const editId = ($('#f-id') || {}).value || '';
-  const existente = editId ? state.results.find((x) => x.id === editId) : null;
+  let existente = editId ? state.results.find((x) => x.id === editId) : null;
   if (editId && !existente) { err.textContent = 'Esa marca ya no existe.'; return; }
+  if (!existente && reemplazaId) existente = state.results.find((x) => x.id === reemplazaId) || null;   // "Cambiarla por esta"
   if (existente && !puedoEditarResultado(existente)) { err.textContent = 'Solo puedes cambiar tus marcas.'; return; }
   const athleteId = soyAdmin() ? $('#f-athlete').value : (existente ? existente.athleteId : state.meId); const date = $('#f-date').value;
   if (!athleteById(athleteId)) { err.textContent = 'Elige tu atleta antes de apuntar.'; return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = 'Pon una fecha válida.'; return; }
   if (date > todayISO()) { err.textContent = 'La fecha no puede ser futura.'; return; }
+  // una marca por atleta, entreno y día: si ya hay una, se ofrece cambiarla en vez de duplicarla
+  const otra = state.results.find((x) => x.athleteId === athleteId && x.workoutId === w.id && x.date === date && (!existente || x.id !== existente.id));
+  if (otra) {
+    const quien = athleteId === state.meId ? 'tienes' : 'tiene ' + athleteById(athleteId).name;
+    if (editId) { err.textContent = 'Ese día ya ' + quien + ' otra marca en ' + w.name + ' (' + fmtScore(otra) + '). Solo cabe una por día: cambia la fecha o borra la otra.'; return; }
+    err.innerHTML = esc('Ese día ya ' + quien + ' una marca en ' + w.name + ': ' + fmtScore(otra) + '. Solo cabe una por día.') +
+      ' <button type="button" class="link" data-action="save-result" data-reemplaza="' + esc(otra.id) + '">Cambiarla por esta</button>';
+    return;
+  }
   // al editar se rehace entera (mismo id y creación): no quedan campos de otro tipo de marca
   const r = Object.assign(existente ? { id: existente.id, createdAt: existente.createdAt || nowISO(), createdBy: existente.createdBy || existente.athleteId } : { id: uid(), createdAt: nowISO(), createdBy: state.meId || athleteId },
     { athleteId, workoutId: w.id, workoutName: w.name, category: w.category, scoreType: w.scoreType, date, rx: $('#f-rx').checked, notes: $('#f-notes').value.trim() });
@@ -1472,7 +1509,7 @@ function trabajoDe(a, periodo) {
   const desde = dias ? isoHaceDias(dias - 1) : '';
   const t = { pesos: {}, veces: {}, ultimo: {}, marcas: 0 };
   if (!a) return t;
-  state.results.filter((r) => r.athleteId === a.id && marcaValida(r) && (!desde || r.date >= desde)).forEach((r) => {
+  state.results.filter((r) => r.athleteId === a.id && marcaValida(r) && !esRepetida(r) && (!desde || r.date >= desde)).forEach((r) => {
     const w = getWorkout(r.workoutId); if (!w) return;
     const movs = movimientosDe(w); if (!movs.length) return;
     t.marcas++;
@@ -1700,7 +1737,7 @@ function estimaMin(w, medianas) {
 }
 function medianasClub() {
   const t = {};
-  state.results.forEach((r) => { if (r.scoreType === 'time' && r.finished !== false && r.seconds > 0) (t[r.workoutId] = t[r.workoutId] || []).push(r.seconds); });
+  state.results.forEach((r) => { if (r.scoreType === 'time' && r.finished !== false && r.seconds > 0 && !esRepetida(r)) (t[r.workoutId] = t[r.workoutId] || []).push(r.seconds); });
   const out = {};
   Object.keys(t).forEach((id) => { const v = t[id].sort((a, b) => a - b); const k = Math.floor(v.length / 2); out[id] = v.length % 2 ? v[k] : (v[k - 1] + v[k]) / 2; });
   return out;
@@ -2560,7 +2597,7 @@ const ACTIONS = {
     if (w) $('#f-wod').insertAdjacentHTML('afterend', '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · se puntúa por ' + esc(SCORE_LABEL[w.scoreType]) + '</span>');
   },
   'toggle-capped': () => { const c = $('#f-capped').checked; $('#f-capped-reps').hidden = !c; },
-  'save-result': () => saveResult(),
+  'save-result': (el) => saveResult((el && el.dataset && el.dataset.reemplaza) || null),
   'edit-result': (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
     if (!puedoEditarResultado(r)) { noPuedes('Solo puedes cambiar tus marcas'); return; }
@@ -2613,6 +2650,15 @@ const ACTIONS = {
   'actualizar-app': () => {
     try { sessionStorage.removeItem(LS_PREFIX + 'actualizando'); } catch (e) { }
     location.replace(location.pathname + '?v=' + encodeURIComponent(state.versionNueva || APP_VERSION) + '&r=' + Date.now());
+  },
+  'borrar-repetidas': async () => {
+    if (!soyAdmin()) { noPuedes(); return; }
+    const rep = marcasRepetidas(); if (!rep.length) return;
+    const lista = rep.map((r) => athleteById(r.athleteId).name + ', ' + r.workoutName + ' del ' + fmtDate(r.date) + ' (' + fmtScore(r) + ')').join('; ');
+    if (await confirmSheet('Borrar marcas repetidas', 'Se borrará' + (rep.length === 1 ? '' : 'n') + ' ' + rep.length + ' marca' + (rep.length === 1 ? '' : 's') + ' que no cuenta' + (rep.length === 1 ? '' : 'n') + ' porque ese día hay otra más reciente del mismo entreno: ' + lista + '.')) {
+      for (const r of rep) await state.store.remove('results', r.id);
+      dismissSheet(); toast('Marcas repetidas borradas'); render();
+    } else dismissSheet();
   },
   'sug-otras': () => { state.sugSeed = (state.sugSeed || 0) + 1; refrescaSug(); },
   'sug-usar': (el) => {
