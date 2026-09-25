@@ -42,6 +42,7 @@ Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
 | Hacerlo Rx (la casilla viene marcada: quítala si escalaste) | +5 |
 | Hero WOD | +10 |
 | Benchmark (Girls) | +5 |
+| Prueba oficial (DEKA) | +30 |
 | Mejorar tu mejor marca de días anteriores en ese entreno (PR) | +5 |
 | Semana activa (3 días o más con entreno) | +5 |
 
@@ -78,6 +79,12 @@ Como la app no tiene contraseñas, cualquiera podría ponerse el nombre de otro 
 El PIN solo lo pone y lo quita su dueño: ni el admin puede tocarlo. Se guarda derivado con PBKDF2 (210.000 vueltas y sal propia), nunca en claro, y no sale en las copias exportadas. Aun así son cuatro números y su huella viaja con los datos del club: **no lo trates como una contraseña de verdad**, trátalo como el candado de la taquilla.
 
 Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un candado**. Todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede editar los datos directamente en GitHub. Para impedirlo de verdad haría falta un servidor, que es justo lo que este montaje evita.
+
+## Pruebas oficiales
+
+**Entrenos → Pruebas** tiene las pruebas de competición, de momento la **DEKA FIT** (Spartan): diez zonas funcionales y, antes de cada una, 500 m corriendo, 5 km en total. Zonas: 30 reverse lunges con RAM, 500 m de remo, 20 box jump overs, 25 med ball sit-up throws, 500 m de ski, 100 m de farmers carry, 25 cal de air bike, 20 dead ball overs, 100 m de sled push/pull y 20 burpees con RAM, con las cargas oficiales ♀/♂ en la ficha. Se puntúa por tiempo y en el ranking suma **+30** (un Hero, +10). Como el resto, tiene su pizarra, su mapa de músculos y PR cuando la vuelvas a hacer más rápido.
+
+Las fechas de las pruebas del club salen en **Hoy → Próximos**, y el día de la prueba como WOD de hoy: la DEKA FIT de **Barcelona, el domingo 27 de septiembre de 2026**. Para añadir otra prueba o fecha: `data/pruebas.json` (campo `eventos`). No entran en los entrenos sugeridos.
 
 ## Crear entrenos
 
@@ -139,9 +146,9 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `index.html` | La app completa, generada por `build.js` |
 | `version.json` | La versión publicada, generada por `build.js`. La app la mira al abrirse y al volver a ella: si hay una más nueva, se recarga sola (o avisa con un botón si estás a medias), para no quedarse con la copia en caché |
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
-| `data/heroes.json`, `data/girls.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
+| `data/heroes.json`, `data/girls.json`, `data/pruebas.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `pruebas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js

@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.9.2';
+const APP_VERSION = '1.10.0';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -23,6 +23,7 @@ const CREW_NAME = 'Crossfit Club';
 /* Datos incrustados en el build */
 const HEROES = /*__HEROES__*/[];
 const GIRLS = /*__GIRLS__*/[];
+const PRUEBAS = /*__PRUEBAS__*/[];            // pruebas oficiales (DEKA...) con sus fechas
 const MOVIMIENTOS = /*__MOVIMIENTOS__*/[];
 const CUERPO = /*__CUERPO__*/{ front: [], back: [] };   // paths SVG del cuerpo (react-native-body-highlighter, MIT)
 
@@ -446,7 +447,8 @@ function builtinWorkouts() {
     firstPosted: h.firstPosted || '', url: h.url || '', partner: !!h.partner,
     searchKey: (h.name + ' ' + (h.prescription || []).join(' ') + ' ' + (h.honoree || '')).toLowerCase(),
   });
-  _builtin = HEROES.map((h) => mk(h, 'hero')).concat(GIRLS.map((g) => mk(g, 'girl')));
+  _builtin = HEROES.map((h) => mk(h, 'hero')).concat(GIRLS.map((g) => mk(g, 'girl')))
+    .concat(PRUEBAS.map((x) => Object.assign(mk(x, 'prueba'), { eventos: x.eventos || [] })));
   return _builtin;
 }
 function allWorkouts() {
@@ -525,7 +527,7 @@ function periodContains(period, iso) {
   return true;
 }
 const PERIOD_LABEL = { week: 'esta semana', month: 'este mes', season: 'la temporada' };
-const PTS = { marca: 5, rendimiento: 40, lider: 5, rx: 5, hero: 10, girl: 5, pr: 5, semana: 5 };
+const PTS = { marca: 5, rendimiento: 40, lider: 5, rx: 5, hero: 10, girl: 5, prueba: 30, pr: 5, semana: 5 };
 const RULES = [
   ['Apuntar una marca válida (cero no cuenta)', 5],
   ['Rendimiento: tu marca frente a la mejor del club', 'hasta 40'],
@@ -533,6 +535,7 @@ const RULES = [
   ['Hacerlo Rx', '+5'],
   ['Si es un Hero WOD', '+10'],
   ['Si es un benchmark (Girls)', '+5'],
+  ['Si es una prueba oficial (DEKA)', '+30'],
   ['Mejorar tu mejor marca de días anteriores (PR)', '+5'],
   ['Semana activa (3 días o más)', '+5'],
 ];
@@ -576,7 +579,7 @@ function computeStandings(period) {
     p.count++;
     p.base += PTS.marca;
     if (r.rx) p.rx += PTS.rx;
-    if (r.category === 'hero') p.cat += PTS.hero; else if (r.category === 'girl') p.cat += PTS.girl;
+    if (r.category === 'hero') p.cat += PTS.hero; else if (r.category === 'girl') p.cat += PTS.girl; else if (r.category === 'prueba') p.cat += PTS.prueba;
   });
   const chrono = valid.slice().sort((a, b) => (a.date + (a.createdAt || '')).localeCompare(b.date + (b.createdAt || '')));
   const best = {};
@@ -673,7 +676,7 @@ function rxTexto(m, v) {
 const _movsMemo = new WeakMap();
 function movimientosDe(w) {
   if (!w) return [];
-  if (w.category === 'hero' || w.category === 'girl') {                 // los de serie no cambian: se detecta una vez
+  if (w.category === 'hero' || w.category === 'girl' || w.category === 'prueba') {   // los de serie no cambian: se detecta una vez
     if (!_movsMemo.has(w)) _movsMemo.set(w, movimientosDeTexto(w));
     return _movsMemo.get(w);
   }
@@ -688,10 +691,18 @@ function movimientosDeTexto(w) {
   const hallados = [];
   MOVIMIENTOS.forEach((m) => {
     let mejor = '';
-    m.en.concat([m.nombre]).forEach((alias) => { if (texto.indexOf(alias.toLowerCase()) >= 0 && alias.length > mejor.length) mejor = alias; });
+    m.en.concat([m.nombre]).forEach((alias) => { if (alias.length > mejor.length && comoPalabra(texto, alias)) mejor = alias; });
     if (mejor) hallados.push({ mov: m, alias: mejor });
   });
-  return hallados.filter((h) => !hallados.some((o) => o !== h && o.alias.length > h.alias.length && o.alias.toLowerCase().indexOf(h.alias.toLowerCase()) >= 0)).map((h) => h.mov);
+  return hallados.filter((h) => !hallados.some((o) => o !== h && o.alias.length > h.alias.length && comoPalabra(' ' + o.alias.toLowerCase() + ' ', h.alias))).map((h) => h.mov);
+}
+/* ¿Aparece el nombre como palabra entera (admitiendo el plural)? Así "row" no sale de "throws". */
+function comoPalabra(texto, alias) {
+  const al = String(alias).toLowerCase();
+  for (let i = texto.indexOf(al); i >= 0; i = texto.indexOf(al, i + 1)) {
+    if (!/[a-z]/.test(texto[i - 1] || ' ') && /^(s|es)?([^a-z]|$)/.test(texto.slice(i + al.length))) return true;
+  }
+  return false;
 }
 let _movIdx = null;
 function movPorId(id) {
@@ -735,7 +746,8 @@ function avatar(a, size) {
   return '<span class="avatar ' + (size || '') + '" data-color="' + esc(a.color || 'red') + '" aria-hidden="true">' + esc(initials(a.name)) + '</span>';
 }
 function badge(cls, text) { return '<span class="badge ' + cls + '">' + esc(text) + '</span>'; }
-function catBadge(cat) { return cat === 'hero' ? badge('hero', 'Hero') : cat === 'girl' ? badge('girl', 'Girl') : badge('custom', 'Nuestro'); }
+function catBadge(cat) { return cat === 'hero' ? badge('hero', 'Hero') : cat === 'girl' ? badge('girl', 'Girl') : cat === 'prueba' ? badge('prueba', 'Prueba') : badge('custom', 'Nuestro'); }
+function hostDe(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'web'; } }
 function icon(name) {
   const p = {
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -828,8 +840,11 @@ function loadingAll() { return !(state.loaded.athletes && state.loaded.workouts 
 function viewHome() {
   const m = me();
   const today = todayISO();
-  const todays = state.workouts.filter((w) => w.scheduledDate === today);
-  const upcoming = state.workouts.filter((w) => w.scheduledDate && w.scheduledDate > today).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate)).slice(0, 3);
+  const eventos = [];                                                  // las pruebas oficiales con fecha (la DEKA...)
+  builtinWorkouts().forEach((w) => (w.eventos || []).forEach((e) => eventos.push({ w, fecha: e.fecha, lugar: e.lugar || '' })));
+  const todays = state.workouts.filter((w) => w.scheduledDate === today).concat(eventos.filter((e) => e.fecha === today).map((e) => e.w));
+  const upcoming = state.workouts.filter((w) => w.scheduledDate && w.scheduledDate > today).map((w) => ({ w, fecha: w.scheduledDate, lugar: '' }))
+    .concat(eventos.filter((e) => e.fecha > today)).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 3);
   const standings = computeStandings('season');
   const feed = state.results.filter((r) => athleteById(r.athleteId)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).slice(0, 12);
   let html = '<div class="view">' + modeBanner();
@@ -856,7 +871,7 @@ function viewHome() {
       '<div class="btn-row"><button class="btn" data-action="go" data-view="wods">Ver entrenos</button><button class="btn" data-action="log-result">Apuntar resultado</button></div>';
   }
   if (upcoming.length) {
-    html += '<div class="divider"></div><span class="eyebrow">Próximos</span><ul>' + upcoming.map((w) => '<li class="kv"><button class="link" style="background:none;border:0;padding:0;color:var(--text);font:inherit;text-align:left" data-action="open-wod" data-id="' + esc(w.id) + '">' + esc(w.name) + '</button><span class="muted">' + esc(fmtDate(w.scheduledDate)) + '</span></li>').join('') + '</ul>';
+    html += '<div class="divider"></div><span class="eyebrow">Próximos</span><ul>' + upcoming.map((u) => '<li class="kv"><button class="link" style="background:none;border:0;padding:0;color:var(--text);font:inherit;text-align:left" data-action="open-wod" data-id="' + esc(u.w.id) + '">' + esc(u.w.name) + (u.lugar ? ' · ' + esc(u.lugar) : '') + '</button><span class="muted">' + esc(fmtDate(u.fecha)) + '</span></li>').join('') + '</ul>';
   }
   html += '</section>';
 
@@ -895,10 +910,10 @@ function viewHome() {
 
 /* --- ENTRENOS --- */
 function viewWods() {
-  const counts = { hero: HEROES.length, girl: GIRLS.length, custom: state.workouts.length };
+  const counts = { hero: HEROES.length, girl: GIRLS.length, prueba: PRUEBAS.length, custom: state.workouts.length };
   return '<div class="view">' +
     '<div class="search">' + icon('search') + '<input type="search" id="wod-search" placeholder="Buscar entreno o movimiento…" value="' + esc(state.search) + '" autocomplete="off"></div>' +
-    '<div class="segmented" role="tablist">' + ['hero', 'girl', 'custom'].map((t) => '<button role="tab" data-action="wod-tab" data-tab="' + t + '" aria-pressed="' + (state.wodTab === t) + '">' + ({ hero: 'Héroes', girl: 'Girls', custom: 'Nuestros' })[t] + ' <span class="faint">' + counts[t] + '</span></button>').join('') + '</div>' +
+    '<div class="segmented cuatro" role="tablist">' + ['hero', 'girl', 'prueba', 'custom'].map((t) => '<button role="tab" data-action="wod-tab" data-tab="' + t + '" aria-pressed="' + (state.wodTab === t) + '">' + ({ hero: 'Héroes', girl: 'Girls', prueba: 'Pruebas', custom: 'Nuestros' })[t] + ' <span class="faint">' + counts[t] + '</span></button>').join('') + '</div>' +
     '<div id="wod-list">' + wodListHtml() + '</div>' +
     '<button class="fab" data-action="new-workout" aria-label="Nuevo entreno">' + icon('plus') + '</button>' +
     '</div>';
@@ -916,8 +931,8 @@ function wodListHtml() {
   return '<ul class="list">' + items.map((w) => {
     const meta = workoutMeta(w);
     return '<li><button class="row pressable" data-action="open-wod" data-id="' + esc(w.id) + '" aria-label="' + esc(w.name) + '">' +
-      '<span class="badge ' + (w.category === 'hero' ? 'hero' : w.category === 'girl' ? 'girl' : 'custom') + '" style="min-width:52px;justify-content:center">' + (w.category === 'hero' ? 'Hero' : w.category === 'girl' ? 'Girl' : 'WOD') + '</span>' +
-      '<span><span class="title">' + esc(w.name) + (w.scheduledDate === today ? ' ' + badge('today', 'Hoy') : '') + '</span><span class="sub">' + esc(meta.join(' · ')) + ' — ' + esc(firstLine(w)) + '</span></span>' +
+      '<span class="badge ' + (w.category === 'hero' ? 'hero' : w.category === 'girl' ? 'girl' : w.category === 'prueba' ? 'prueba' : 'custom') + '" style="min-width:52px;justify-content:center">' + (w.category === 'hero' ? 'Hero' : w.category === 'girl' ? 'Girl' : w.category === 'prueba' ? 'Prueba' : 'WOD') + '</span>' +
+      '<span><span class="title">' + esc(w.name) + (w.scheduledDate === today || (w.eventos || []).some((e) => e.fecha === today) ? ' ' + badge('today', 'Hoy') : '') + '</span><span class="sub">' + esc(meta.join(' · ')) + ' — ' + esc(firstLine(w)) + '</span></span>' +
       '<span class="chev">' + icon('chev') + '</span></button></li>';
   }).join('') + '</ul>' + (q ? '<p class="faint small" style="margin-top:8px">' + items.length + ' resultado' + (items.length === 1 ? '' : 's') + '</p>' : '');
 }
@@ -933,13 +948,14 @@ function viewWod() {
   let html = '<div class="view">' +
     '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="wods">' + icon('back') + 'Entrenos</button>' +
     (puedoEditarEntreno(w) ? '<span class="btn-row"><button class="btn ghost sm" data-action="edit-workout" data-id="' + esc(w.id) + '">' + icon('pen') + 'Editar</button><button class="btn ghost sm danger" data-action="delete-workout" data-id="' + esc(w.id) + '">' + icon('trash') + '</button></span>' : '') + '</div>' +
-    '<section class="card"><div class="meta-line">' + catBadge(w.category) + workoutMeta(w).map((b) => badge('type', b)).join('') + (w.scheduledDate ? badge('today', fmtDate(w.scheduledDate)) : '') + '</div>' +
+    '<section class="card"><div class="meta-line">' + catBadge(w.category) + workoutMeta(w).map((b) => badge('type', b)).join('') + (w.scheduledDate ? badge('today', fmtDate(w.scheduledDate)) : '') +
+      (w.eventos || []).filter((e) => e.fecha >= todayISO()).map((e) => badge('today', e.lugar + ' · ' + fmtDate(e.fecha))).join('') + '</div>' +
     '<h1 class="h-display h1">' + esc(w.name) + '</h1>' +
     (w.honoree ? '<p class="muted small">' + esc(w.honoree) + '</p>' : '') +
     '<div class="wod-desc">' + lines.map((l, i) => (i === 0 || /:$/.test(l.trim())) ? '<span class="head">' + esc(l) + '</span>' : esc(l)).join('\n') + '</div>' +
     ((w.loadF || w.loadM) ? '<div class="loads">' + (w.loadF ? '<span class="sym">♀</span><span>' + esc(withKg(w.loadF)) + '</span>' : '') + (w.loadM ? '<span class="sym">♂</span><span>' + esc(withKg(w.loadM)) + '</span>' : '') + '</div>' : '') +
     (w.tributeEs ? '<div class="tribute">' + esc(w.tributeEs) + '</div>' : '') +
-    '<div class="meta-line">' + (w.firstPosted ? '<span>Publicado por CrossFit en ' + esc(fmtPosted(w.firstPosted)) + '</span>' : '') + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener">crossfit.com ↗</a>' : '') + (w.createdBy && athleteById(w.createdBy) ? '<span>Creado por ' + esc(athleteById(w.createdBy).name) + '</span>' : '') + '</div>' +
+    '<div class="meta-line">' + (w.firstPosted ? '<span>Publicado por CrossFit en ' + esc(fmtPosted(w.firstPosted)) + '</span>' : '') + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener">' + esc(hostDe(w.url)) + ' ↗</a>' : '') + (w.createdBy && athleteById(w.createdBy) ? '<span>Creado por ' + esc(athleteById(w.createdBy).name) + '</span>' : '') + '</div>' +
     '<div class="btn-row">' + (w.scoreType !== 'load' ? '<button class="btn primary" data-action="timer-for" data-id="' + esc(w.id) + '">' + icon('timer') + 'Cronómetro</button>' : '') + '<button class="btn" data-action="log-result" data-id="' + esc(w.id) + '">Apuntar resultado</button></div>' +
     '</section>';
   const movs = movimientosDe(w);
@@ -1002,7 +1018,7 @@ function viewRanking() {
       return '<li><button class="lb-row' + (s.athlete.id === state.meId ? ' me' : '') + '" data-action="expand" data-id="' + esc(s.athlete.id) + '" aria-expanded="' + open + '" aria-label="' + esc(s.athlete.name) + ', ' + s.total + ' puntos"><span class="pos">' + (s.count ? s.pos : '–') + '</span>' + avatar(s.athlete) +
         '<span><span class="title">' + esc(s.athlete.name) + '</span><br><span class="small muted">' + s.count + ' entreno' + (s.count === 1 ? '' : 's') + ((s.results || 0) > s.count ? ' (' + s.results + ' marcas)' : '') + ' · ' + s.prs + ' PR · ' + s.wins + ' victoria' + (s.wins === 1 ? '' : 's') + '</span></span>' +
         '<span class="pts">' + s.total + '<small>PTS</small></span></button>' +
-        (open ? '<div class="breakdown"><span>Marcas apuntadas</span><b>' + s.base + '</b><span>Rendimiento</span><b>' + s.rend + '</b><span>Rx</span><b>' + s.rx + '</b><span>Héroes y benchmarks</span><b>' + s.cat + '</b><span>PRs</span><b>' + s.pr + '</b><span>Mejores del club (' + s.wins + ')</span><b>' + s.lider + '</b><span>Semanas activas</span><b>' + s.weeks + '</b></div>' : '') + '</li>';
+        (open ? '<div class="breakdown"><span>Marcas apuntadas</span><b>' + s.base + '</b><span>Rendimiento</span><b>' + s.rend + '</b><span>Rx</span><b>' + s.rx + '</b><span>Héroes, Girls y pruebas</span><b>' + s.cat + '</b><span>PRs</span><b>' + s.pr + '</b><span>Mejores del club (' + s.wins + ')</span><b>' + s.lider + '</b><span>Semanas activas</span><b>' + s.weeks + '</b></div>' : '') + '</li>';
     }).join('') + '</ul>';
   }
   html += '<details class="card"><summary><span class="eyebrow">Cómo se puntúa</span></summary><div class="rules" style="margin-top:10px">' + RULES.map((r) => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
@@ -1374,6 +1390,7 @@ function workoutOptions(selected) {
   const opt = (w) => '<option value="' + esc(w.id) + '"' + (w.id === selected ? ' selected' : '') + '>' + esc(w.name) + '</option>';
   return '<option value="">— Elige un entreno —</option>' +
     (custom.length ? '<optgroup label="Nuestros">' + custom.map(opt).join('') + '</optgroup>' : '') +
+    '<optgroup label="Pruebas">' + builtinWorkouts().filter((w) => w.category === 'prueba').map(opt).join('') + '</optgroup>' +
     '<optgroup label="Girls">' + builtinWorkouts().filter((w) => w.category === 'girl').map(opt).join('') + '</optgroup>' +
     '<optgroup label="Héroes">' + builtinWorkouts().filter((w) => w.category === 'hero').map(opt).join('') + '</optgroup>';
 }
@@ -1749,7 +1766,7 @@ let _reparto = null;
 function repartoTipico() {
   if (_reparto) return _reparto;
   const tot = {}; let suma = 0;
-  builtinWorkouts().forEach((w) => { const p = musculosDe(w); Object.keys(p).forEach((g) => { tot[g] = (tot[g] || 0) + p[g]; suma += p[g]; }); });
+  builtinWorkouts().filter((w) => w.category !== 'prueba').forEach((w) => { const p = musculosDe(w); Object.keys(p).forEach((g) => { tot[g] = (tot[g] || 0) + p[g]; suma += p[g]; }); });
   _reparto = {};
   MUSCULOS.forEach((x) => { _reparto[x[0]] = suma ? (tot[x[0]] || 0) / suma : 1 / MUSCULOS.length; });
   return _reparto;
@@ -1938,7 +1955,7 @@ function baseCatalogo() {
   const clave = state.results.length + '|' + state.results.reduce((m, r) => ((r.updatedAt || '') > m ? r.updatedAt : m), '') + '|' + state.workouts.map((w) => w.id + (w.updatedAt || '')).join(',');
   if (_baseCat && clave === _baseCatClave) return _baseCat;
   const medianas = medianasClub();
-  _baseCat = allWorkouts().map((w) => {
+  _baseCat = allWorkouts().filter((w) => w.category !== 'prueba').map((w) => {
     const movs = movimientosDe(w);
     const e = movs.length ? estimaMin(w, medianas) : null;
     return e ? { w, movs, min: e.min, fuente: e.fuente } : null;

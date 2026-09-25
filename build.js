@@ -9,10 +9,11 @@ let js = read('src/app.js');
 const heroes = JSON.parse(read('data/heroes.json'));
 const girls = JSON.parse(read('data/girls.json'));
 const movimientos = JSON.parse(read('data/movimientos.json'));
+const pruebas = JSON.parse(read('data/pruebas.json'));
 const cuerpo = JSON.parse(read('data/cuerpo.json'));
 const LS = String.fromCharCode(8232), PS = String.fromCharCode(8233);
 const safe = (o) => JSON.stringify(o).split('</script').join('<\/script').split(LS).join('\u2028').split(PS).join('\u2029');
-js = js.replace('/*__HEROES__*/[]', () => safe(heroes)).replace('/*__GIRLS__*/[]', () => safe(girls)).replace('/*__MOVIMIENTOS__*/[]', () => safe(movimientos)).replace('/*__CUERPO__*/{ front: [], back: [] }', () => safe(cuerpo));
+js = js.replace('/*__HEROES__*/[]', () => safe(heroes)).replace('/*__GIRLS__*/[]', () => safe(girls)).replace('/*__MOVIMIENTOS__*/[]', () => safe(movimientos)).replace('/*__PRUEBAS__*/[]', () => safe(pruebas)).replace('/*__CUERPO__*/{ front: [], back: [] }', () => safe(cuerpo));
 const out = html.replace('/*__CSS__*/', () => css).replace('/*__JS__*/', () => js);
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist/index.html'), out);
@@ -22,4 +23,4 @@ fs.writeFileSync(path.join(root, 'dist/version.json'), JSON.stringify({ version 
 // versión para Artifact (sin doctype/html/head/body: el publicador la envuelve)
 const inner = out.replace(/^[\s\S]*?<head>/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '').replace(/<meta charset="utf-8">\s*/, '').replace(/<meta name="viewport"[^>]*>\s*/, '');
 fs.writeFileSync(path.join(root, 'dist/artifact.html'), inner);
-console.log('dist/index.html', (out.length / 1024).toFixed(0) + ' KB', '· v' + version, '· heroes', heroes.length, '· girls', girls.length, '· movimientos', movimientos.length);
+console.log('dist/index.html', (out.length / 1024).toFixed(0) + ' KB', '· v' + version, '· heroes', heroes.length, '· girls', girls.length, '· pruebas', pruebas.length, '· movimientos', movimientos.length);

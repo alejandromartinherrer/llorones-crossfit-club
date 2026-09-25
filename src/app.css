@@ -330,6 +330,8 @@ main {
 .row:active, .row.pressable:hover { background: var(--surface-2); }
 .row .title { font-weight: 600; font-size: 16px; line-height: 1.2; }
 .row .sub { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .title, .row .sub { display: block; }                 /* nombre arriba, detalle debajo */
+.row > span:nth-child(2) { min-width: 0; }                 /* y el detalle se recorta con … en vez de salirse */
 .row .right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .row .chev { color: var(--faint); }
 
@@ -377,6 +379,7 @@ main {
 }
 .badge.hero { background: color-mix(in srgb, var(--plate-red) 18%, transparent); color: var(--plate-red); }
 .badge.girl { background: color-mix(in srgb, var(--plate-blue) 18%, transparent); color: var(--plate-blue); }
+.badge.prueba { background: color-mix(in srgb, var(--oro) 22%, transparent); color: var(--oro); }
 .badge.custom { background: color-mix(in srgb, var(--plate-yellow) 22%, transparent); color: color-mix(in srgb, var(--plate-yellow) 70%, var(--text)); }
 .badge.rx { background: var(--accent); color: var(--accent-ink); }
 .badge.pr { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
@@ -895,3 +898,6 @@ details[open] > summary::after { content: "–"; }
 /* ---------- aviso de versión nueva ---------- */
 .aviso-version { margin-bottom: 14px; }
 .aviso-version .btn { margin-left: auto; flex: none; }
+
+/* ---------- cuatro pestañas en Entrenos ---------- */
+.segmented.cuatro button { padding: 8px 2px; font-size: 13px; letter-spacing: 0.04em; }
