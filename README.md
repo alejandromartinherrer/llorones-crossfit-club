@@ -38,6 +38,7 @@ Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
 |---|---|
 | Apuntar una marca válida (una marca en cero no cuenta) | 5 |
 | **Rendimiento**: tu marca frente a la mejor del club en ese entreno | hasta 40 |
+| Entreno *for quality* (sin crono ni marca): en vez del rendimiento, todos los que lo hacen | 20 |
 | Tener la mejor marca del club en ese entreno | +5 |
 | Hacerlo Rx (la casilla viene marcada: quítala si escalaste) | +5 |
 | Hero WOD | +10 |
@@ -46,9 +47,9 @@ Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
 | Mejorar tu mejor marca de días anteriores en ese entreno (PR) | +5 |
 | Semana activa (3 días o más con entreno) | +5 |
 
-El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor marca del club se lleva los 40 y el resto la parte proporcional. La mitad de rondas, la mitad de kilos o el doble de tiempo son la mitad de puntos. Así 20 rondas no valen lo mismo que 2, ni 10 minutos lo mismo que 20.
+El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor marca del club se lleva los 40 y el resto la parte proporcional. La mitad de rondas, la mitad de kilos, la mitad de metros o el doble de tiempo son la mitad de puntos. Así 20 rondas no valen lo mismo que 2, ni 10 minutos lo mismo que 20.
 
-Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. Cada atleta tiene **una marca por entreno y día**: si apunta otra ese día, la app le ofrece cambiar la que tenía en vez de duplicarla (y si quedara alguna repetida de antes, cuenta la última apuntada, las demás salen como «Repetida» y quien administra las borra desde Perfil). El **PR** es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Hacerlo Rx cuando antes fue escalado también cuenta como mejora. Los tiempos se apuntan en minutos y segundos (1 h 15 min son 75:00). Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
+Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra. En los **for quality** no hay marca que comparar: cada uno apunta que lo ha hecho (Rx o escalado), todos se llevan la mitad del rendimiento (20), y no hay mejor marca del club ni PR; en la pizarra sale un ✓ en vez del puesto. Cada atleta tiene **una marca por entreno y día**: si apunta otra ese día, la app le ofrece cambiar la que tenía en vez de duplicarla (y si quedara alguna repetida de antes, cuenta la última apuntada, las demás salen como «Repetida» y quien administra las borra desde Perfil). El **PR** es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Hacerlo Rx cuando antes fue escalado también cuenta como mejora. Los tiempos se apuntan en minutos y segundos (1 h 15 min son 75:00). Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
 
 ## Quién puede qué
 
@@ -90,13 +91,15 @@ Las fechas de las pruebas del club salen en **Hoy → Próximos**, y el día de 
 
 Un entreno nuestro se monta **eligiendo los movimientos de la lista**, para que todos escribamos lo mismo y la app sepa qué se hace en cada uno:
 
-- **Formato** (For time, AMRAP, EMOM, Tabata, intervalos, fuerza, otro) y por qué se puntúa, como antes.
+- **Formato** (For time, For quality, AMRAP, EMOM, Tabata, intervalos, fuerza, otro) y por qué se puntúa: tiempo, rondas + reps, reps, kg o **metros** (un AMRAP de sled a ver quién hace más metros). **For quality** es para los entrenos sin crono ni marca en los que todos hacen lo mismo (accesorios, técnica): no lleva cronómetro ni se puntúa por nada, cada uno apunta que lo ha hecho.
 - **Rondas o esquema de reps**, en los formatos que lo llevan: un número son rondas (`5` → "5 rounds for time of:") y varios separados por guiones son un esquema (`21-15-9` → "21-15-9 reps for time of:"). Hay chips para los habituales (3, 5, 21-15-9, 15-12-9, 10→1; en fuerza 5x5, 5x3…).
-- **Movimientos**, una fila por cada uno: las reps a la izquierda, el movimiento en medio y la carga Rx a la derecha si la hay. Al tocar el movimiento sale la lista entera por grupos y **se filtra según escribes** ("thr" → Thruster, Dumbbell thruster). Enter elige el primero. Si escribes el nombre entero ("pull-up") se enlaza solo, y si algo no está en la lista se puede **usar tal cual** (y avisar para añadirlo al catálogo).
+- **Movimientos**, una fila por cada uno: la cantidad a la izquierda, el movimiento en medio y la carga Rx a la derecha si la hay. La cantidad lleva su unidad al lado: toca «reps» para cambiarla a **metros**, **calorías**, **segundos** o **minutos**. Cada movimiento trae la suya (Run, Row, Ski, Swim, los carries, el sled, el handstand walk y el bear crawl en metros; la bici en calorías; plank, L-sit, wall sit y handstand hold en segundos) y, si la cambias a mano, se queda la que elegiste. Al tocar el movimiento sale la lista entera por grupos y **se filtra según escribes** ("thr" → Thruster, Dumbbell thruster). Enter elige el primero. Si escribes el nombre entero ("pull-up") se enlaza solo, y si algo no está en la lista se puede **usar tal cual** (y avisar para añadirlo al catálogo).
 - **Notas** opcionales (descansos, cómo repartir en pareja…).
-- **Así quedará**: la vista previa del texto que se genera, al estilo de los héroes, con plurales ("10 Thrusters 43/30 kg") y con "400 m" o "20 cal" en los de cardio cuando solo pones el número.
+- **Así quedará**: la vista previa del texto que se genera, al estilo de los héroes, con plurales ("10 Thrusters 43/30 kg") y la unidad delante del movimiento ("400 m Run", "50 m Farmers carry 2×24 kg", "20 cal Bike", "30 s Plank").
 
-Quien prefiera puede **escribirlo a mano** (el cuadro viene relleno con lo construido), y los entrenos antiguos escritos a mano se abren en ese modo; al pulsar "Mejor elegir los movimientos de la lista" se convierten en filas en lo que se pueda ("30 Push Ups" → 30 × Push-up; las líneas "Rx …" pasan a las notas).
+Quien prefiera puede **escribirlo a mano** (el cuadro viene relleno con lo construido), y los entrenos antiguos escritos a mano se abren en ese modo; al pulsar "Mejor elegir los movimientos de la lista" se convierten en filas en lo que se pueda ("30 Push Ups" → 30 × Push-up, "1000m run" → 1000 m de Run; las líneas "Rx …" pasan a las notas).
+
+Los entrenos de antes en los que el sled o el farmers carry se apuntaron solo con el número ("15 sled") se abren al editarlos con sus metros, y los planks con sus segundos; lo guardado no cambia hasta que alguien los edita y guarda.
 
 Los entrenos nuestros los edita quien los creó **o quien administra el club**, da igual quién los metiera.
 
@@ -148,7 +151,7 @@ For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM
 | `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
 | `data/heroes.json`, `data/girls.json`, `data/pruebas.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
 | `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra la rama `data` |
-| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `pruebas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `pruebas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj`, `calidad.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, for quality y unidades (metros, calorías, segundos), cronómetro y reloj a pantalla completa. Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`) |
 
 ```bash
 node build.js && node test/sync.test.js
