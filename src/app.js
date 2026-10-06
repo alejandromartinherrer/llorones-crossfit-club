@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.11.1';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -1648,7 +1648,7 @@ const SPR = {
   'hang-power-clean': 2.6, 'clean-and-jerk': 4, jerk: 2.6, 'push-jerk': 2.4, 'push-press': 2.4, 'strict-press': 2.6, 'shoulder-to-overhead': 2.4, snatch: 3.6,
   'power-snatch': 3, 'squat-snatch': 3.8, 'hang-power-snatch': 2.8, 'bench-press': 2.4, 'overhead-lunge': 3, 'front-rack-lunge': 2.8, 'hang-squat-clean': 3.2,
   'hang-snatch': 3.4, 'split-jerk': 2.8, 'romanian-deadlift': 2.2, 'good-morning': 2.2, 'barbell-row': 2.2, 'back-rack-lunge': 2.8, cluster: 3.8, 'sumo-deadlift': 2.2,
-  'floor-press': 2.4, 'snatch-balance': 3, 'muscle-snatch': 2.8, 'clean-pull': 2.2, 'snatch-pull': 2.2, 'ground-to-overhead': 3.4, 'hip-thrust': 2.2, curl: 2, 'landmine-press': 2.2,
+  'floor-press': 2.4, 'snatch-balance': 3, 'muscle-snatch': 2.8, 'clean-pull': 2.2, 'snatch-pull': 2.2, 'ground-to-overhead': 3.4, 'hip-thrust': 2.2, curl: 2, 'triceps-extension': 2, 'landmine-press': 2.2,
   'kb-swing': 2, 'turkish-get-up': 20, 'db-snatch': 2.4, 'db-thruster': 2.6, 'db-squat-clean': 2.8, 'db-split-clean': 3.5, 'db-deadlift': 2, 'db-lunge': 2.6, 'goblet-squat': 2.4,
   'devil-press': 5, 'db-push-press': 2.2, 'db-clean': 2.4, 'db-clean-and-jerk': 3.4, 'db-bench-press': 2.4, 'kb-clean': 2.4, 'kb-snatch': 2.6, 'around-the-world': 3, halo: 3,
   windmill: 4, 'man-maker': 8, 'renegade-row': 3.2, 'db-row': 2.2, 'db-front-squat': 2.4, 'kb-deadlift': 2, 'kb-press': 2.4, 'kb-front-squat': 2.4, 'kb-thruster': 2.6,
