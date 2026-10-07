@@ -841,6 +841,8 @@ details[open] > summary::after { content: "–"; }
 .cant-ud .ud { position: relative; display: flex; align-items: center; gap: 3px; padding: 0 7px 0 3px; font-family: var(--font-cond); font-weight: 700; font-size: 13px; color: var(--accent); white-space: nowrap; }
 .cant-ud .ud::after { content: ''; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; opacity: 0.75; }
 .cant-ud .ud-sel { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+.mv-row .cant-ud.es-max .cant { display: none; }
+.cant-ud.es-max .ud { flex: 1 1 auto; justify-content: center; padding: 0 6px; }
 .sin-marca { font-size: 14px; color: var(--muted); background: var(--surface-2); border: 1px dashed var(--line); border-radius: var(--radius-sm); padding: 10px 12px; margin: 0; }
 .mv-list { max-height: 260px; overflow-y: auto; border-top: 1px solid var(--line); padding: 4px; -webkit-overflow-scrolling: touch; }
 .mv-list[hidden] { display: none; }
@@ -966,7 +968,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.11.2';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -2362,7 +2364,7 @@ function workoutOptions(selected) {
     '<optgroup label="Girls">' + builtinWorkouts().filter((w) => w.category === 'girl').map(opt).join('') + '</optgroup>' +
     '<optgroup label="Héroes">' + builtinWorkouts().filter((w) => w.category === 'hero').map(opt).join('') + '</optgroup>';
 }
-function scoreFields(scoreType, pre) {
+function scoreFields(scoreType, pre, w) {
   pre = pre || {};
   if (scoreType === 'time') {
     const s = pre.seconds || 0; const mm = Math.floor(s / 60), ss = s % 60;
@@ -2371,11 +2373,21 @@ function scoreFields(scoreType, pre) {
       '<div class="field" id="f-capped-reps"' + (pre.finished === false ? '' : ' hidden') + '><label for="f-reps">Reps completadas al llegar al cap</label><input type="number" id="f-reps" min="0" value="' + (pre.reps || '') + '" inputmode="numeric"></div>';
   }
   if (scoreType === 'rounds') return '<div class="inline-fields"><div class="field"><label for="f-rounds">Rondas completas</label><input type="number" id="f-rounds" min="0" value="' + (pre.rounds != null ? pre.rounds : '') + '" inputmode="numeric"></div><div class="field"><label for="f-reps">Reps de la última</label><input type="number" id="f-reps" min="0" value="' + (pre.reps || 0) + '" inputmode="numeric"></div></div>';
-  if (scoreType === 'reps') return '<div class="field"><label for="f-reps">Reps totales</label><input type="number" id="f-reps" min="0" value="' + (pre.reps != null ? pre.reps : '') + '" inputmode="numeric"></div>';
+  if (scoreType === 'reps') {
+    const mx = maximosDe(w);                         // con máximos se suman todas las rondas
+    return '<div class="field"><label for="f-reps">Reps totales</label><input type="number" id="f-reps" min="0" value="' + (pre.reps != null ? pre.reps : '') + '" inputmode="numeric">' +
+      (mx ? '<span class="hint">Suma las reps de todas las rondas' + (mx === 'cal' ? '; cada caloría cuenta como una rep' : '') + '.</span>' : '') + '</div>';
+  }
   if (scoreType === 'load') return '<div class="field"><label for="f-load">Peso (kg)</label><input type="number" id="f-load" min="0" step="0.5" value="' + (pre.load != null ? pre.load : '') + '" inputmode="decimal"></div>';
   if (scoreType === 'distance') return '<div class="field"><label for="f-meters">Metros</label><input type="number" id="f-meters" min="0" step="1" value="' + (pre.meters != null ? pre.meters : '') + '" inputmode="numeric"></div>';
   if (scoreType === 'done') return '<p class="sin-marca">For quality: no hay crono ni marca, todos hacen lo mismo. Apunta que lo has hecho y, si lo escalaste, quita el Rx.</p>';
   return '';
+}
+/* ¿Lleva filas de máximo? 'cal' si alguna es de calorías. Se mira en el texto, así vale para los
+   hechos por filas ("Max Pull-ups"), los escritos a mano y los de serie (Nicole: "Max-rep pull-ups"). */
+function maximosDe(w) {
+  const d = String((w && w.description) || '');
+  return MAX_CAL_LINEA.test(d) ? 'cal' : MAX_LINEA.test(d) ? 'reps' : '';
 }
 function openLogResult(workoutId, pre, editId) {
   pre = pre || {};
@@ -2391,7 +2403,7 @@ function openLogResult(workoutId, pre, editId) {
       ? '<select id="f-athlete">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>'
       : '<select id="f-athlete" disabled><option value="' + esc(state.meId || '') + '">' + esc((me() || { name: '—' }).name) + '</option></select>') + '</div>' +
     '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" value="' + esc(pre.date || todayISO()) + '" max="' + todayISO() + '"></div></div>' +
-    '<div id="f-score">' + (w ? scoreFields(w.scoreType, pre) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
+    '<div id="f-score">' + (w ? scoreFields(w.scoreType, pre, w) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
     '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx === false ? '' : ' checked') + '> Rx (tal cual está escrito, con las cargas prescritas). Quítalo si lo escalaste.</label>' +
     '<div class="field"><label for="f-notes">Notas</label><input type="text" id="f-notes" placeholder="Escalado a 40 kg, con chaleco, etc." value="' + esc(pre.notes || '') + '" maxlength="140"></div>' +
     '<p class="form-error" id="f-error"></p>';
@@ -3130,14 +3142,21 @@ function plural(m, cant) {
 /* Unidad de la cantidad de cada fila. Por defecto, la del movimiento ("ud" en movimientos.json):
    metros al correr, remar, cargar o con el trineo, calorías en la bici y segundos en las planchas;
    lo demás, reps. */
-const UNIDADES = [['reps', 'reps'], ['m', 'metros'], ['cal', 'calorías'], ['s', 'segundos'], ['min', 'minutos']];
+const UNIDADES = [['reps', 'reps'], ['m', 'metros'], ['cal', 'calorías'], ['s', 'segundos'], ['min', 'minutos'], ['max', 'máx'], ['maxcal', 'máx calorías']];
 const UD_NOMBRE = Object.fromEntries(UNIDADES);
+/* "Máx" va sin número (cada uno hace todas las que pueda): la fila pone "máx" y el texto, "Max Pull-ups" o "Max cal Row". */
+const UD_CORTA = { max: 'máx', maxcal: 'máx cal' };
+const esMax = (ud) => ud === 'max' || ud === 'maxcal';
+const MAX_CANT = /^m[aá]x(?:imo|imum)?\.?(?:[\s-]*(?:reps?|repeticiones|meters|metros|m|distance))?([\s-]*cal(?:s|or[ií]as?|ories)?)?$/i;
+const MAX_LINEA = /^\s*m[aá]x(?:imo|imum)?\b/im, MAX_CAL_LINEA = /^\s*m[aá]x(?:imo|imum)?\.?[\s-]*cal/im;
 const UD_ESCRITA = { m: 'm', metro: 'm', metros: 'm', meter: 'm', meters: 'm', km: 'km', cal: 'cal', cals: 'cal', calorias: 'cal', calories: 'cal', calorie: 'cal',
   s: 's', seg: 's', sec: 's', secs: 's', segundos: 's', seconds: 's', min: 'min', mins: 'min', minutos: 'min', minutes: 'min', rep: 'reps', reps: 'reps' };
 const udDeMov = (m) => (m && m.ud) || 'reps';
-/* "400 m" → {n: '400', u: 'm'}, "1 km" → {n: '1000', u: 'm'}, "15" → {n: '15', u: ''}. */
+/* "400 m" → {n: '400', u: 'm'}, "1 km" → {n: '1000', u: 'm'}, "15" → {n: '15', u: ''}, "máx cal" → {n: '', u: 'maxcal'}. */
 function partesCant(cant) {
   const c = String(cant || '').trim();
+  const mx = c.match(MAX_CANT);
+  if (mx) return { n: '', u: mx[1] ? 'maxcal' : 'max' };
   const x = c.match(/^(\d+(?:[.,]\d+)?)\s*([a-zíá]+)$/i);
   const u = x && UD_ESCRITA[x[2].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
   if (!u) return { n: c, u: '' };
@@ -3147,12 +3166,20 @@ function partesCant(cant) {
 /* La unidad de una fila: la guardada; en las de antes de las unidades, la que traía escrita
    ("400 m") o la de su movimiento (así un "15 Sled" de antes se lee como 15 metros). */
 function udDeBloque(b) {
+  const u = partesCant(b.cant).u;
+  if (esMax(u)) return u;                              // un "max" escrito en la cantidad, de antes de que hubiera unidad máx
   if (b.ud && UD_NOMBRE[b.ud]) return b.ud;
-  return partesCant(b.cant).u || udDeMov(movPorId(b.mov));
+  return u || udDeMov(movPorId(b.mov));
 }
 function lineaBloque(b) {
   const m = movPorId(b.mov);
   const n = partesCant(b.cant).n, ud = udDeBloque(b);
+  if (esMax(ud)) {                                   // "Max Pull-ups"; si es de calorías o de metros, dicho: "Max cal Row", "Max meters Run"
+    const u0 = udDeMov(m);
+    const que = ud === 'maxcal' || u0 === 'cal' ? 'cal' : u0 === 'm' ? 'meters' : '';
+    const nombre = m ? (que || u0 !== 'reps' ? m.nombre : plural(m, '')) : String(b.nombre || '').trim();
+    return ['Max', que, nombre, String(b.carga || '').trim()].filter(Boolean).join(' ');
+  }
   const cant = ud !== 'reps' && /^\d+(?:[.,]\d+)?$/.test(n) ? n + ' ' + ud : n;
   const nombre = m ? (ud === 'reps' ? plural(m, n) : m.nombre) : String(b.nombre || '').trim();
   return [cant, nombre, String(b.carga || '').trim()].filter(Boolean).join(' ');
@@ -3191,7 +3218,8 @@ function parseaTexto(desc) {
   String(desc || '').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
     if (/:$/.test(l)) return;
     if (/^rx\b/i.test(l)) { notas.push(l); return; }
-    const m = l.match(/^(\d+(?:[.,]\d+)?(?:\s*(?:km|metros?|meters?|m|calor[ií]as|calories|cals?|segundos|seconds|secs?|seg|s|minutos|minutes|mins?|reps?))?)\s+(.+)$/i);
+    const m = l.match(/^(\d+(?:[.,]\d+)?(?:\s*(?:km|metros?|meters?|m|calor[ií]as|calories|cals?|segundos|seconds|secs?|seg|s|minutos|minutes|mins?|reps?))?)\s+(.+)$/i) ||
+      l.match(/^(m[aá]x(?:imo|imum)?\.?(?:[\s-]*(?:reps?|repeticiones|meters|metros|m|distance))?(?:[\s-]*cal(?:s|or[ií]as?|ories)?)?)[\s-]+(.+)$/i);   // "Max pull-ups", "Max cal row"
     const cant = m ? m[1] : '';
     const resto = (m ? m[2] : l).trim();
     const bajo = normaliza(resto);
@@ -3209,7 +3237,7 @@ function parseaTexto(desc) {
 /* La unidad va pegada al número: un desplegable nativo invisible encima de "reps ▾". Si la
    fila trae una unidad distinta de la de su movimiento, cuenta como elegida a mano. */
 function udSelectHtml(ud, elegida) {
-  return '<label class="ud"><span class="ud-txt">' + esc(ud) + '</span><select class="ud-sel" data-action="w-ud" aria-label="Unidad"' + (elegida ? ' data-elegida="1"' : '') + '>' +
+  return '<label class="ud"><span class="ud-txt">' + esc(UD_CORTA[ud] || ud) + '</span><select class="ud-sel" data-action="w-ud" aria-label="Unidad"' + (elegida ? ' data-elegida="1"' : '') + '>' +
     UNIDADES.map((u) => '<option value="' + u[0] + '"' + (u[0] === ud ? ' selected' : '') + '>' + esc(u[1]) + '</option>').join('') + '</select></label>';
 }
 function filaMovHtml(b) {
@@ -3217,7 +3245,7 @@ function filaMovHtml(b) {
   const m = movPorId(b.mov);
   const ud = udDeBloque(b);
   return '<div class="mv-item"><div class="mv-row">' +
-    '<div class="cant-ud"><input class="cant" type="text" inputmode="numeric" placeholder="—" value="' + esc(partesCant(b.cant).n) + '" maxlength="10" autocomplete="off" aria-label="Cantidad">' + udSelectHtml(ud, ud !== udDeMov(m)) + '</div>' +
+    '<div class="cant-ud' + (esMax(ud) ? ' es-max' : '') + '"><input class="cant" type="text" inputmode="numeric" placeholder="—" value="' + esc(partesCant(b.cant).n) + '" maxlength="10" autocomplete="off" aria-label="Cantidad">' + udSelectHtml(ud, ud !== udDeMov(m)) + '</div>' +
     '<input class="mv-q" type="text" placeholder="Movimiento" value="' + esc(m ? m.nombre : (b.nombre || '')) + '" data-mov="' + esc(m ? m.id : '') + '" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Movimiento">' +
     '<input class="carga" type="text" placeholder="kg" value="' + esc(b.carga || '') + '" maxlength="16" autocomplete="off" aria-label="Carga">' +
     '<button type="button" class="icon-btn" data-action="w-row-del" aria-label="Quitar movimiento">' + icon('x') + '</button>' +
@@ -3248,7 +3276,11 @@ function cierraListasMov(salvo) {
     it.classList.remove('abierta'); const l = $('.mv-list', it); if (l) { l.hidden = true; l.innerHTML = ''; }
   });
 }
-function ponUd(sel, ud) { sel.value = ud; const t = sel.parentElement.querySelector('.ud-txt'); if (t) t.textContent = ud; }
+function ponUd(sel, ud) {
+  sel.value = ud;
+  const t = sel.parentElement.querySelector('.ud-txt'); if (t) t.textContent = UD_CORTA[ud] || ud;
+  const c = sel.closest('.cant-ud'); if (c) c.classList.toggle('es-max', esMax(ud));   // un máximo no lleva número: la casilla se esconde
+}
 function eligeMov(item, id, nombre) {
   const q = $('.mv-q', item), sel = $('.ud-sel', item);
   const m = movPorId(id);
@@ -3271,20 +3303,24 @@ function leerFormEntreno() {
   const num = (id, def) => { const el = $(id); const v = el ? Number(el.value) : NaN; return isNaN(v) ? def : v; };
   const type = $('#w-type').value;
   const build = $('#w-build');
+  let maxEscrito = false;
   const bloques = $$('#w-rows .mv-item').map((it) => {
     const q = $('.mv-q', it); const nombre = q.value.trim();
     const m = movPorId(q.dataset.mov) || movPorNombre(nombre);
     const b = {};
-    const c = partesCant($('.cant', it).value), carga = $('.carga', it).value.trim();
-    const sel = $('.ud-sel', it);
-    const ud = c.u || (sel && sel.dataset.elegida ? sel.value : udDeMov(m));   // "400 m" escrito manda; si no, la elegida o la del movimiento
+    const cant = $('.cant', it), sel = $('.ud-sel', it);
+    const c = partesCant(cant.value), carga = $('.carga', it).value.trim();
+    if (esMax(c.u) && sel) { cant.value = ''; sel.dataset.elegida = '1'; ponUd(sel, c.u); maxEscrito = true; }   // "máx" escrito pasa al selector
+    const elegida = sel && sel.dataset.elegida ? sel.value : '';
+    const ud = esMax(elegida) ? elegida : c.u || elegida || udDeMov(m);   // "máx" elegido manda; si no, "400 m" escrito, la elegida o la del movimiento
     if (sel && sel.value !== ud) ponUd(sel, ud);                             // y la fila enseña la que se va a usar
-    if (c.n) b.cant = c.n;
+    if (c.n && !esMax(ud)) b.cant = c.n;                                     // el número que quedara bajo un "máx" no se guarda
     if (m) b.mov = m.id; else if (nombre) b.nombre = nombre;
     b.ud = ud;
     if (carga) b.carga = carga;
     return b;
   }).filter((b) => b.mov || b.nombre);
+  if (maxEscrito) puntuaMaximos();
   return {
     type, scoreType: type === 'quality' ? 'done' : ($('#w-score').value === 'done' ? DEFAULT_SCORE[type] : $('#w-score').value), modo: build && !build.hidden ? 'bloques' : 'texto',
     durationMin: type === 'amrap' ? clamp(num('#w-dur', 12), 1, 120) : 0,
@@ -3316,7 +3352,7 @@ function openWorkoutForm(existing, presetDate, borrador) {
       esquemaHtml(w) +
       '<div class="field"><span class="label">Movimientos</span><div id="w-rows">' + filas + '</div>' +
       '<button type="button" class="btn sm" data-action="w-row-add">' + icon('plus') + 'Añadir movimiento</button>' +
-      '<span class="hint">La cantidad a la izquierda (toca «reps» para cambiarla a metros, calorías o segundos), el movimiento en medio (escribe y elige de la lista) y la carga Rx a la derecha, si la hay.</span></div>' +
+      '<span class="hint">La cantidad a la izquierda (toca «reps» para cambiarla a metros, calorías, segundos o máx), el movimiento en medio (escribe y elige de la lista) y la carga Rx a la derecha, si la hay.</span></div>' +
       '<div class="field"><label for="w-notas">Notas (opcional)</label><input type="text" id="w-notas" value="' + esc(w.notas || '') + '" placeholder="p. ej. descansa 1 min entre rondas" maxlength="120"></div>' +
       '<div class="field"><span class="label">Así quedará</span><div class="w-preview" id="w-preview"></div><button type="button" class="link" data-action="w-modo" data-modo="texto">Prefiero escribirlo a mano</button></div>' +
     '</div>' +
@@ -3343,6 +3379,17 @@ const DEFAULT_SCORE = { fortime: 'time', quality: 'done', amrap: 'rounds', emom:
 function opcionesPuntua(type, sel) {
   const lista = type === 'quality' ? ['done'] : ['time', 'rounds', 'reps', 'load', 'distance'];
   return lista.map((x) => '<option value="' + x + '"' + (sel === x ? ' selected' : '') + '>' + esc(x === 'done' ? 'nada: solo hecho' : SCORE_LABEL[x]) + '</option>').join('');
+}
+/* Con filas de máximo, un EMOM, un AMRAP, un Tabata o unos intervalos se puntúan por reps totales:
+   se cambia solo y lo avisa. */
+const PUNTUA_MAXIMOS = { emom: 1, amrap: 1, tabata: 1, interval: 1 };
+function puntuaMaximos() {
+  const t = $('#w-type'), sc = $('#w-score'), build = $('#w-build'), d = $('#w-desc');
+  if (!t || !sc || sc.disabled || !PUNTUA_MAXIMOS[t.value] || sc.value === 'reps') return;
+  const hay = build && !build.hidden ? $$('#w-rows .ud-sel').some((s) => esMax(s.value)) : !!(d && MAX_LINEA.test(d.value));
+  if (!hay) return;
+  sc.value = 'reps';
+  toast('Con máximos se puntúa por reps totales');
 }
 async function saveWorkout(existingId) {
   const err = $('#w-error'); err.textContent = '';
@@ -3584,6 +3631,7 @@ const ACTIONS = {
   'w-type-change': () => {
     const t = $('#w-type').value; const sc = $('#w-score');
     sc.innerHTML = opcionesPuntua(t, DEFAULT_SCORE[t]); sc.value = DEFAULT_SCORE[t]; sc.disabled = t === 'quality';
+    puntuaMaximos();
     $('#w-params').innerHTML = workoutParams({ type: t, durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: t === 'tabata' ? 8 : 10, workSec: 20, restSec: 10 });
     const f = $('#w-esq-field'); if (f) { f.hidden = !llevaEsquema(t); $('#w-esq-chips').innerHTML = esquemaChips(t); }
     pintaPreviewEntreno();
@@ -3602,7 +3650,7 @@ const ACTIONS = {
     pintaPreviewEntreno();
   },
   'mv-pick': (el) => { const it = el.closest('.mv-item'); if (it) eligeMov(it, el.dataset.mov, el.dataset.nombre); },
-  'w-ud': (el) => { el.dataset.elegida = '1'; ponUd(el, el.value); pintaPreviewEntreno(); },
+  'w-ud': (el) => { el.dataset.elegida = '1'; ponUd(el, el.value); pintaPreviewEntreno(); puntuaMaximos(); },
   'w-esq-chip': (el) => { const i = $('#w-esq'); if (!i) return; i.value = el.dataset.v; pintaPreviewEntreno(); },
   'w-modo': (el) => {
     const build = $('#w-build'), texto = $('#w-texto'), d = $('#w-desc'); if (!build || !texto || !d) return;
@@ -3615,13 +3663,13 @@ const ACTIONS = {
         if (r.filas.length) $('#w-rows').innerHTML = r.filas.map(filaMovHtml).join('');
         if (r.notas && $('#w-notas') && !$('#w-notas').value) $('#w-notas').value = r.notas;
       }
-      texto.hidden = true; build.hidden = false; pintaPreviewEntreno();
+      texto.hidden = true; build.hidden = false; pintaPreviewEntreno(); puntuaMaximos();
     }
   },
   'log-result': (el) => openLogResult(el.dataset.id || (state.view === 'wod' ? state.params.id : null)),
   'log-wod-change': () => {
     const w = getWorkout($('#f-wod').value);
-    $('#f-score').innerHTML = w ? scoreFields(w.scoreType) : '';
+    $('#f-score').innerHTML = w ? scoreFields(w.scoreType, null, w) : '';
     const hint = $('#f-wod').parentElement.querySelector('.hint'); if (hint) hint.remove();
     if (w) $('#f-wod').insertAdjacentHTML('afterend', '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · ' + esc(puntuaTexto(w)) + '</span>');
   },
