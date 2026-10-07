@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.2';
+const APP_VERSION = '1.11.3';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -2333,6 +2333,7 @@ function eligeMov(item, id, nombre) {
   if (sel && !sel.dataset.elegida) ponUd(sel, udDeMov(m));      // la unidad sigue al movimiento, salvo que la hayas cambiado a mano
   cierraListasMov(); q.blur();
   pintaPreviewEntreno();
+  if (sel && esMax(sel.value)) puntuaMaximos();                // un máximo de Run no se puntúa como uno de Pull-ups
 }
 function esquemaChips(type) {
   const chips = type === 'strength' ? [['5x5', '5x5'], ['5x3', '5x3'], ['3x3', '3x3'], ['10x1', '10x1']] : [['1 ronda', ''], ['3', '3'], ['5', '5'], ['21-15-9', '21-15-9'], ['15-12-9', '15-12-9'], ['10→1', '10-9-8-7-6-5-4-3-2-1']];
@@ -2425,16 +2426,28 @@ function opcionesPuntua(type, sel) {
   const lista = type === 'quality' ? ['done'] : ['time', 'rounds', 'reps', 'load', 'distance'];
   return lista.map((x) => '<option value="' + x + '"' + (sel === x ? ' selected' : '') + '>' + esc(x === 'done' ? 'nada: solo hecho' : SCORE_LABEL[x]) + '</option>').join('');
 }
-/* Con filas de máximo, un EMOM, un AMRAP, un Tabata o unos intervalos se puntúan por reps totales:
-   se cambia solo y lo avisa. */
+/* Con filas de máximo, un EMOM, un AMRAP, un Tabata o unos intervalos se puntúan por lo que se suma:
+   metros si todos los máximos son de distancia ("Max meters Run": correr, remar, el sled…) y, si no,
+   reps totales (las calorías cuentan como reps). Se cambia solo y lo avisa. */
 const PUNTUA_MAXIMOS = { emom: 1, amrap: 1, tabata: 1, interval: 1 };
+function puntuaDeMaximos(filas) {
+  const mx = filas.filter((f) => esMax(f.ud));
+  if (!mx.length) return '';
+  return mx.every((f) => f.ud === 'max' && udDeMov(movPorId(f.mov)) === 'm') ? 'distance' : 'reps';
+}
 function puntuaMaximos() {
   const t = $('#w-type'), sc = $('#w-score'), build = $('#w-build'), d = $('#w-desc');
-  if (!t || !sc || sc.disabled || !PUNTUA_MAXIMOS[t.value] || sc.value === 'reps') return;
-  const hay = build && !build.hidden ? $$('#w-rows .ud-sel').some((s) => esMax(s.value)) : !!(d && MAX_LINEA.test(d.value));
-  if (!hay) return;
-  sc.value = 'reps';
-  toast('Con máximos se puntúa por reps totales');
+  if (!t || !sc || sc.disabled || !PUNTUA_MAXIMOS[t.value]) return;
+  const filas = build && !build.hidden
+    ? $$('#w-rows .mv-item').map((it) => {                     // una fila aún sin movimiento no cuenta
+      const q = $('.mv-q', it), sel = $('.ud-sel', it), m = movPorId(q.dataset.mov) || movPorNombre(q.value);
+      return { ud: sel ? sel.value : '', mov: m ? m.id : '', vale: !!(m || q.value.trim()) };
+    }).filter((f) => f.vale)
+    : d ? parseaTexto(d.value).filas.map((f) => ({ ud: udDeBloque(f), mov: f.mov })) : [];
+  const que = puntuaDeMaximos(filas);
+  if (!que || sc.value === que) return;
+  sc.value = que;
+  toast(que === 'distance' ? 'Con máximos de distancia se puntúa por metros' : 'Con máximos se puntúa por reps totales');
 }
 async function saveWorkout(existingId) {
   const err = $('#w-error'); err.textContent = '';
@@ -2692,7 +2705,7 @@ const ACTIONS = {
     const it = el.closest('.mv-item'); const rows = $('#w-rows'); if (!it || !rows) return;
     it.remove();
     if (!rows.children.length) rows.insertAdjacentHTML('beforeend', filaMovHtml({}));
-    pintaPreviewEntreno();
+    pintaPreviewEntreno(); puntuaMaximos();
   },
   'mv-pick': (el) => { const it = el.closest('.mv-item'); if (it) eligeMov(it, el.dataset.mov, el.dataset.nombre); },
   'w-ud': (el) => { el.dataset.elegida = '1'; ponUd(el, el.value); pintaPreviewEntreno(); puntuaMaximos(); },
