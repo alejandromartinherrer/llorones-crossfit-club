@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.3';
+const APP_VERSION = '1.11.4';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -502,6 +502,7 @@ function valorMarca(r) {
 }
 /* --- comparación de resultados: negativo = a mejor que b --- */
 function compareResults(a, b) {
+  if (a.scoreType !== b.scoreType) return a.scoreType < b.scoreType ? -1 : 1;   // formatos distintos no se comparan: orden fijo y antisimétrico
   const rx = (b.rx ? 1 : 0) - (a.rx ? 1 : 0);
   if (rx) return rx;
   switch (a.scoreType) {
@@ -523,7 +524,7 @@ function fmtScore(r) {
     case 'time': return r.finished === false ? 'CAP · ' + (r.reps || 0) + ' reps' : fmtTime(r.seconds || 0);
     case 'rounds': return (r.rounds || 0) + ' rd' + (r.reps ? ' + ' + r.reps : '');
     case 'reps': return (r.reps || 0) + ' reps';
-    case 'load': return (r.load || 0) + ' kg';
+    case 'load': return fmtKgNum(r.load || 0) + ' kg';
     case 'distance': return fmtMetros(r.meters);
     case 'done': return 'Hecho';
     default: return '';
@@ -579,7 +580,8 @@ function rendimientosDeEntreno(mejorPorAtleta) {
   return out;
 }
 function computeStandings(period) {
-  const valid = state.results.filter((r) => athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r));   // una por atleta, entreno y día
+  const existen = state.loaded.workouts ? new Set(allWorkouts().map((w) => w.id)) : null;   // sin entreno no hay marca que puntúe (cuando ya han cargado)
+  const valid = state.results.filter((r) => athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r) && (!existen || existen.has(r.workoutId)));   // una por atleta, entreno y día
   const inP = (r) => periodContains(period, r.date);
   const pr = valid.filter(inP);
   const per = {};
@@ -598,17 +600,17 @@ function computeStandings(period) {
   const best = {};
   chrono.forEach((r) => {
     if (r.scoreType === 'done') return;                     // sin marca no hay PR
-    const k = r.athleteId + '|' + r.workoutId; const prev = best[k];
+    const k = r.athleteId + '|' + r.workoutId + '|' + r.scoreType; const prev = best[k];   // las marcas de otro formato no se comparan
     if (prev && compareResults(r, prev) < 0) { if (inP(r)) { const p = ensure(r.athleteId); p.pr += PTS.pr; p.prs++; } }
     if (!prev || compareResults(r, prev) < 0) best[k] = r;
   });
   const byWod = {};
-  pr.forEach((r) => (byWod[r.workoutId] = byWod[r.workoutId] || []).push(r));
+  pr.forEach((r) => { const k = r.workoutId + '|' + r.scoreType; (byWod[k] = byWod[k] || []).push(r); });   // por entreno y formato: si cambió el "Se puntúa por", las de antes se miden entre sí
   Object.keys(byWod).forEach((wid) => {
     const bestBy = {};
     byWod[wid].forEach((r) => { if (!bestBy[r.athleteId] || compareResults(r, bestBy[r.athleteId]) < 0) bestBy[r.athleteId] = r; });
     const rend = rendimientosDeEntreno(bestBy);
-    Object.keys(bestBy).forEach((id) => { ensure(id).rend += Math.round(PTS.rendimiento * rend[id]); });
+    Object.keys(bestBy).forEach((id) => { ensure(id).rend += Math.round(Math.round(PTS.rendimiento * rend[id] * 1e6) / 1e6); });   // 17,4999… es 17,5: sube a 18
     const ranked = Object.values(bestBy).filter((r) => r.scoreType !== 'done').sort(compareResults);   // en un For quality no hay mejor marca
     if (ranked.length >= 2) {
       ranked.forEach((r, i) => {
@@ -628,8 +630,9 @@ function computeStandings(period) {
   return rows;
 }
 function wodBoard(workoutId) {
+  const w = getWorkout(workoutId);                   // la pizarra habla un solo formato: el de ahora (las de antes, aparte)
   const bestBy = {};
-  state.results.filter((r) => r.workoutId === workoutId && athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r)).forEach((r) => {
+  state.results.filter((r) => r.workoutId === workoutId && (!w || r.scoreType === w.scoreType) && athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r)).forEach((r) => {
     if (!bestBy[r.athleteId] || compareResults(r, bestBy[r.athleteId]) < 0) bestBy[r.athleteId] = r;
   });
   return Object.values(bestBy).sort(compareResults);
@@ -658,7 +661,7 @@ function marcasRepetidas() { return state.results.filter((r) => athleteById(r.at
    es PR, una corrección del mismo día tampoco, y un For quality (sin marca) nunca. */
 function isPR(result) {
   if (!marcaValida(result) || esRepetida(result) || result.scoreType === 'done') return false;
-  const prev = state.results.filter((r) => r.athleteId === result.athleteId && r.workoutId === result.workoutId && r.id !== result.id && r.date < result.date && marcaValida(r) && !esRepetida(r));
+  const prev = state.results.filter((r) => r.athleteId === result.athleteId && r.workoutId === result.workoutId && r.scoreType === result.scoreType && r.id !== result.id && r.date < result.date && marcaValida(r) && !esRepetida(r));
   if (!prev.length) return false;
   return prev.every((p) => compareResults(result, p) < 0);
 }
@@ -892,7 +895,7 @@ function viewHome() {
 
   if (m) {
     const mine = standings.find((s) => s.athlete.id === m.id) || { total: 0, pos: '–', count: 0 };
-    const week = new Set(state.results.filter((r) => r.athleteId === m.id && periodContains('week', r.date)).map((r) => r.workoutId + '|' + r.date)).size;
+    const week = (computeStandings('week').find((s) => s.athlete.id === m.id) || { count: 0 }).count;   // los mismos entrenos que cuenta la clasificación
     html += '<section class="stat-strip">' +
       '<div class="stat"><span class="v">' + week + '</span><span class="l">Entrenos esta semana</span></div>' +
       '<div class="stat"><span class="v">' + mine.total + '</span><span class="l">Puntos temporada</span></div>' +
@@ -957,6 +960,7 @@ function viewWod() {
   const w = getWorkout(state.params.id);
   if (!w) return '<div class="view"><button class="btn ghost sm" data-action="go" data-view="wods">' + icon('back') + 'Entrenos</button><div class="empty"><span class="h-display h2">Entreno no encontrado</span><span>Puede que alguien lo haya borrado.</span></div></div>';
   const board = wodBoard(w.id);
+  const puesto = []; board.forEach((r, i) => { puesto[i] = i > 0 && compareResults(r, board[i - 1]) === 0 ? puesto[i - 1] : i + 1; });   // las empatadas comparten puesto: 1, 1, 3
   const m = me();
   const mine = state.results.filter((r) => r.workoutId === w.id && m && r.athleteId === m.id).sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
   const lines = String(w.description || '').split('\n');
@@ -996,11 +1000,20 @@ function viewWod() {
   if (board.length) {
     html += '<ul class="list wod-lb" style="border:0">' + board.map((r, i) => {
       const a = athleteById(r.athleteId);
-      return '<li>' + (r.scoreType === 'done' ? '<span class="pos hecho" title="Hecho">' + icon('check') + '</span>' : '<span class="pos p' + (i + 1) + '">' + (i + 1) + '</span>') + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button></span>' : '') + '</li>';
+      return '<li>' + (r.scoreType === 'done' ? '<span class="pos hecho" title="Hecho">' + icon('check') + '</span>' : '<span class="pos p' + puesto[i] + '">' + puesto[i] + '</span>') + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button></span>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<p class="muted">Nadie lo ha hecho todavía. Sé el primero en la pizarra.</p>';
   }
+  // las marcas de cuando el entreno se puntuaba de otra forma no se mezclan con las de ahora: salen aparte, por formato
+  const antiguas = state.results.filter((r) => r.workoutId === w.id && r.scoreType !== w.scoreType && athleteById(r.athleteId) && marcaValida(r) && !esRepetida(r));
+  antiguas.map((r) => r.scoreType).filter((t, i, l) => l.indexOf(t) === i).forEach((t) => {
+    html += '<div class="divider"></div><span class="eyebrow">Apuntadas cuando se puntuaba por ' + esc(SCORE_LABEL[t] || t) + '</span><ul class="list wod-lb" style="border:0">' + antiguas.filter((r) => r.scoreType === t).sort(compareResults).map((r) => {
+      const a = athleteById(r.athleteId);
+      return '<li><span class="pos">–</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button></span>' : '') + '</li>';
+    }).join('') + '</ul>';
+  });
+  if (antiguas.length) html += '<p class="faint small">No se comparan con las de ahora: edítala y ponla por ' + esc(SCORE_LABEL[w.scoreType] || w.scoreType) + '.</p>';
   html += '</section>';
   if (m) {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus marcas</h2></div>';
@@ -1026,7 +1039,7 @@ function viewRanking() {
   } else {
     html += '<div class="podium">' + order.map((i) => {
       const s = top[i]; if (!s) return '<div></div>';
-      return '<div class="slot p' + (i + 1) + '"><span class="pos">' + (i + 1) + '.º</span>' + avatar(s.athlete, i === 0 ? 'lg' : '') + '<span class="nm">' + esc(s.athlete.name) + '</span><span class="pts">' + s.total + '</span></div>';
+      return '<div class="slot p' + (i + 1) + '"><span class="pos">' + s.pos + '.º</span>' + avatar(s.athlete, i === 0 ? 'lg' : '') + '<span class="nm">' + esc(s.athlete.name) + '</span><span class="pts">' + s.total + '</span></div>';   // el hueco sigue al orden del podio, el número al puesto (los empates comparten)
     }).join('') + '</div>';
     html += '<ul class="list">' + rows.map((s) => {
       const open = state.expanded === s.athlete.id;
@@ -1037,7 +1050,7 @@ function viewRanking() {
     }).join('') + '</ul>';
   }
   html += '<details class="card"><summary><span class="eyebrow">Cómo se puntúa</span></summary><div class="rules" style="margin-top:10px">' + RULES.map((r) => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
-    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. El <b>rendimiento</b> compara tu marca con la mejor del club en ese entreno: quien la tiene se lleva los 40, y el resto la parte proporcional (la mitad de tiempo, la mitad de rondas o la mitad de kilos son la mitad de puntos). Si eres el único que lo ha hecho cuenta a la mitad, hasta que otro lo haga. Una marca sin terminar (time cap) no pasa de la mitad. Cada uno tiene una marca por entreno y día. El PR es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Los puntos se recalculan en vivo.</p></details></div>';
+    '<p class="faint small" style="margin-top:10px">Cuenta la mejor marca de cada atleta en cada entreno. El <b>rendimiento</b> compara tu marca con la mejor del club en ese entreno: quien la tiene se lleva los 40, y el resto la parte proporcional (la mitad de tiempo, la mitad de rondas o la mitad de kilos son la mitad de puntos). Si eres el único que lo ha hecho cuenta a la mitad, hasta que otro lo haga. Una marca sin terminar (time cap) no pasa de la mitad. Si un entreno cambia de «Se puntúa por», las marcas de antes se miden entre ellas, aparte de las nuevas. Los empates comparten puesto. Cada uno tiene una marca por entreno y día. El PR es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Los puntos se recalculan en vivo.</p></details></div>';
   return html;
 }
 
@@ -1413,7 +1426,8 @@ function scoreFields(scoreType, pre, w) {
   pre = pre || {};
   if (scoreType === 'time') {
     const s = pre.seconds || 0; const mm = Math.floor(s / 60), ss = s % 60;
-    return '<div class="field"><span class="label">Tiempo (min : seg)</span><div class="time-input"><input type="number" id="f-m" min="0" max="999" placeholder="min" value="' + (pre.seconds != null ? mm : '') + '" inputmode="numeric" aria-label="Minutos"><span class="colon">:</span><input type="number" id="f-s" min="0" max="59" placeholder="seg" value="' + (pre.seconds != null ? ss : '') + '" inputmode="numeric" aria-label="Segundos"></div><span class="hint">Si pasa de una hora, en minutos: 1 h 15 min son 75:00.</span></div>' +
+    const sinTiempo = pre.finished === false && !!w && w.timeCapMin > 0;      // sin terminar y con time cap, el tiempo es el cap: no se pide
+    return '<div class="field" id="f-time"' + (sinTiempo ? ' hidden' : '') + '><span class="label">Tiempo (min : seg)</span><div class="time-input"><input type="number" id="f-m" min="0" max="999" placeholder="min" value="' + (pre.seconds != null ? mm : '') + '" inputmode="numeric" aria-label="Minutos"><span class="colon">:</span><input type="number" id="f-s" min="0" max="59" placeholder="seg" value="' + (pre.seconds != null ? ss : '') + '" inputmode="numeric" aria-label="Segundos"></div><span class="hint">Si pasa de una hora, en minutos: 1 h 15 min son 75:00.</span></div>' +
       '<label class="check"><input type="checkbox" id="f-capped" data-action="toggle-capped"' + (pre.finished === false ? ' checked' : '') + '> No lo terminé (time cap)</label>' +
       '<div class="field" id="f-capped-reps"' + (pre.finished === false ? '' : ' hidden') + '><label for="f-reps">Reps completadas al llegar al cap</label><input type="number" id="f-reps" min="0" value="' + (pre.reps || '') + '" inputmode="numeric"></div>';
   }
@@ -1428,9 +1442,14 @@ function scoreFields(scoreType, pre, w) {
   if (scoreType === 'done') return '<p class="sin-marca">For quality: no hay crono ni marca, todos hacen lo mismo. Apunta que lo has hecho y, si lo escalaste, quita el Rx.</p>';
   return '';
 }
-/* ¿Lleva filas de máximo? 'cal' si alguna es de calorías. Se mira en el texto, así vale para los
-   hechos por filas ("Max Pull-ups"), los escritos a mano y los de serie (Nicole: "Max-rep pull-ups"). */
+/* ¿Lleva filas de máximo? 'cal' si alguna es de calorías. En los hechos por filas se mira cada fila
+   (una nota que empiece por "Máximo…" no cuenta); en los escritos a mano y los de serie ("Max-rep
+   pull-ups" en Nicole), el texto. */
 function maximosDe(w) {
+  if (w && Array.isArray(w.bloques) && w.bloques.length) {
+    const mx = w.bloques.filter((b) => esMax(udDeBloque(b)));
+    return !mx.length ? '' : mx.some((b) => udDeBloque(b) === 'maxcal' || udDeMov(movPorId(b.mov)) === 'cal') ? 'cal' : 'reps';
+  }
   const d = String((w && w.description) || '');
   return MAX_CAL_LINEA.test(d) ? 'cal' : MAX_LINEA.test(d) ? 'reps' : '';
 }
@@ -1440,15 +1459,17 @@ function openLogResult(workoutId, pre, editId) {
   const w = workoutId ? getWorkout(workoutId) : null;
   const athletes = state.athletes.slice().sort((a, b) => a.name.localeCompare(b.name));
   if (!athletes.length) { openNewAthlete(); return; }
+  const otroTipo = !!(existente && w && existente.scoreType !== w.scoreType);     // marca de cuando el entreno se puntuaba de otra forma: sus cifras no valen aquí
   const body =
     '<input type="hidden" id="f-id" value="' + esc(editId || '') + '">' +
     '<div class="field"><label for="f-wod">Entreno</label><select id="f-wod" data-action="log-wod-change">' + workoutOptions(w ? w.id : '') + '</select>' + (w ? '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · ' + esc(puntuaTexto(w)) + '</span>' : '') + '</div>' +
     '<div class="inline-fields"><div class="field"><label for="f-athlete">Atleta</label>' +
     (soyAdmin()
-      ? '<select id="f-athlete">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>'
+      ? '<select id="f-athlete" data-action="log-field-change">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>'
       : '<select id="f-athlete" disabled><option value="' + esc(state.meId || '') + '">' + esc((me() || { name: '—' }).name) + '</option></select>') + '</div>' +
-    '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" value="' + esc(pre.date || todayISO()) + '" max="' + todayISO() + '"></div></div>' +
-    '<div id="f-score">' + (w ? scoreFields(w.scoreType, pre, w) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
+    '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" data-action="log-field-change" value="' + esc(pre.date || todayISO()) + '" min="2000-01-01" max="' + todayISO() + '"></div></div>' +
+    '<div id="f-score">' + (otroTipo ? '<p class="sin-marca">Esta marca se apuntó como ' + esc(fmtScore(existente)) + ' (por ' + esc(SCORE_LABEL[existente.scoreType] || existente.scoreType) + '); el entreno ahora se puntúa por ' + esc(SCORE_LABEL[w.scoreType] || w.scoreType) + ': ' + (w.scoreType === 'done' ? 'al guardar solo queda apuntado que lo hiciste.' : 'pon la marca de nuevo.') + '</p>' : '') +
+      (w ? scoreFields(w.scoreType, otroTipo ? null : pre, w) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
     '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx === false ? '' : ' checked') + '> Rx (tal cual está escrito, con las cargas prescritas). Quítalo si lo escalaste.</label>' +
     '<div class="field"><label for="f-notes">Notas</label><input type="text" id="f-notes" placeholder="Escalado a 40 kg, con chaleco, etc." value="' + esc(pre.notes || '') + '" maxlength="140"></div>' +
     '<p class="form-error" id="f-error"></p>';
@@ -1456,7 +1477,7 @@ function openLogResult(workoutId, pre, editId) {
 }
 function readTime() {
   const m = Number($('#f-m').value || 0), s = Number($('#f-s').value || 0);
-  if ([m, s].some((n) => isNaN(n) || n < 0) || s > 59 || m > 999) return null;
+  if ([m, s].some((n) => !Number.isInteger(n) || n < 0) || s > 59 || m > 999) return null;   // minutos y segundos enteros
   return Math.round(m * 60 + s);
 }
 async function saveResult(reemplazaId) {
@@ -1470,8 +1491,10 @@ async function saveResult(reemplazaId) {
   if (existente && !puedoEditarResultado(existente)) { err.textContent = 'Solo puedes cambiar tus marcas.'; return; }
   const athleteId = soyAdmin() ? $('#f-athlete').value : (existente ? existente.athleteId : state.meId); const date = $('#f-date').value;
   if (!athleteById(athleteId)) { err.textContent = 'Elige tu atleta antes de apuntar.'; return; }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = 'Pon una fecha válida.'; return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '2000-01-01') { err.textContent = 'Pon una fecha válida.'; return; }     // un año de dos cifras (0026) no es un día
   if (date > todayISO()) { err.textContent = 'La fecha no puede ser futura.'; return; }
+  // "Cambiarla por esta" solo vale para la marca que provocó el aviso: si en la hoja cambió el atleta, el entreno o el día, se ignora y se vuelve a comprobar
+  if (reemplazaId && !editId && existente && (existente.athleteId !== athleteId || existente.workoutId !== w.id || existente.date !== date)) existente = null;
   // una marca por atleta, entreno y día: si ya hay una, se ofrece cambiarla en vez de duplicarla
   const otra = state.results.find((x) => x.athleteId === athleteId && x.workoutId === w.id && x.date === date && (!existente || x.id !== existente.id));
   if (otra) {
@@ -1489,20 +1512,26 @@ async function saveResult(reemplazaId) {
     if (capped) {
       const reps = Number($('#f-reps').value);
       if (!(reps > 0) || $('#f-reps').value === '') { err.textContent = 'Indica las reps completadas al llegar al cap (si no hiciste ninguna, no hay marca que apuntar).'; return; }
-      r.finished = false; r.reps = reps; r.seconds = w.timeCapMin ? w.timeCapMin * 60 : (readTime() || 0);
+      if (!Number.isInteger(reps)) { err.textContent = 'Las reps van en un número entero, sin decimales.'; return; }
+      const sec = w.timeCapMin ? w.timeCapMin * 60 : readTime();             // con time cap el tiempo es el cap y no se pide; sin él, lo escrito (vacío = 0) se valida como un tiempo
+      if (sec == null) { err.textContent = 'Pon el tiempo en minutos y segundos (enteros; los segundos, de 0 a 59) o déjalo vacío.'; return; }
+      r.finished = false; r.reps = reps; r.seconds = sec;
     } else {
       const sec = readTime();
-      if (sec == null || sec <= 0) { err.textContent = 'Pon el tiempo en minutos y segundos.'; return; }
+      if (sec == null || sec <= 0) { err.textContent = 'Pon el tiempo en minutos y segundos (enteros; los segundos, de 0 a 59).'; return; }
+      if (w.timeCapMin > 0 && sec > w.timeCapMin * 60) { err.textContent = 'Ese tiempo pasa del time cap (' + w.timeCapMin + ' min): marca «No lo terminé» y pon las reps que hiciste.'; return; }
       r.finished = true; r.seconds = sec;
     }
   } else if (w.scoreType === 'rounds') {
     const rounds = Number($('#f-rounds').value), reps = Number($('#f-reps').value || 0);
     if ($('#f-rounds').value === '' || !(rounds >= 0) || !(reps >= 0)) { err.textContent = 'Pon las rondas completas (y las reps de la última, si las hay).'; return; }
+    if (!Number.isInteger(rounds) || !Number.isInteger(reps)) { err.textContent = 'Las rondas y las reps van en números enteros, sin decimales.'; return; }
     if (rounds + reps <= 0) { err.textContent = 'Una marca en cero no cuenta: pon al menos una ronda o unas repeticiones.'; return; }
     r.rounds = rounds; r.reps = reps;
   } else if (w.scoreType === 'reps') {
     const reps = Number($('#f-reps').value);
     if ($('#f-reps').value === '' || !(reps >= 0)) { err.textContent = 'Pon las reps totales.'; return; }
+    if (!Number.isInteger(reps)) { err.textContent = 'Las reps van en un número entero, sin decimales.'; return; }
     if (reps <= 0) { err.textContent = 'Una marca en cero no cuenta: pon las repeticiones que hiciste.'; return; }
     r.reps = reps;
   } else if (w.scoreType === 'load') {
@@ -1512,12 +1541,13 @@ async function saveResult(reemplazaId) {
   } else if (w.scoreType === 'distance') {
     const meters = Number($('#f-meters').value);
     if (!(meters > 0)) { err.textContent = 'Pon los metros que hiciste.'; return; }
+    if (!Number.isInteger(meters)) { err.textContent = 'Los metros van en un número entero, sin decimales.'; return; }
     r.meters = meters;
   }                                                         // For quality (done): no hay nada más que leer
   try {
     await state.store.set('results', r.id, r);
-    if (existente) { toast('Marca actualizada: ' + fmtScore(r) + ' en ' + w.name); dismissSheet(); render(); return; }
-    const pr = isPR(Object.assign({}, r));
+    const pr = isPR(Object.assign({}, r));                  // también al corregir: si con el cambio es PR, se avisa igual
+    if (existente) { toast((pr ? '¡PR! ' : '') + 'Marca actualizada: ' + fmtScore(r) + ' en ' + w.name); dismissSheet(); render(); return; }
     toast(pr ? '¡PR! ' + fmtScore(r) + ' en ' + w.name : 'Apuntado: ' + fmtScore(r) + ' en ' + w.name);
     if (state.view === 'timer') { closeSheet(); timerReset(); go('wod', { id: w.id }); }
     else { dismissSheet(); render(); }
@@ -2153,7 +2183,9 @@ function viewSugeridos() {
 /* ============================================================
    Entrenos por bloques: reps + movimiento de la lista + carga
    ============================================================ */
-const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;
+const ESQUEMA_RE = /^\d+(\s*[-x×]\s*\d+)*$/;                                  // Fuerza: 5x5, 3x10, 5-3-1
+const ESQUEMA_REPS_RE = /^[1-9]\d{0,2}(\s*-\s*[1-9]\d{0,2})*$/;               // el resto: 5 (rondas) o 21-15-9, de 1 a 999
+const esquemaValido = (esq, type) => !esq || type === 'strength' || ESQUEMA_REPS_RE.test(esq);   // en Fuerza vale lo que se escriba (5x5, 5-3-1…)
 const PLURAL_ESP = { c2b: 'Chest-to-bar pull-ups' };
 const SIN_PLURAL = { k2e: 1, 'handstand-walk': 1, chaleco: 1, sandbag: 1, sled: 1, 'plate-carry': 1, 'farmers-carry': 1, 'waiters-walk': 1, 'overhead-carry': 1, 'bear-crawl': 1, 'buddy-carry': 1, plank: 1, 'l-sit': 1, 'handstand-hold': 1, 'yoke-carry': 1, 'front-rack-carry': 1 };
 const normaliza = (t) => String(t || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
@@ -2176,8 +2208,7 @@ function movPorNombre(texto) {
   return MOVIMIENTOS.find((m) => normaliza(m.nombre) === t || m.en.some((a) => normaliza(a) === t)) || null;
 }
 function plural(m, cant) {
-  const n = parseInt(String(cant || '').trim(), 10);
-  if (n === 1 || m.tipo === 'nota' || SIN_PLURAL[m.id]) return m.nombre;
+  if (String(cant == null ? '' : cant).trim() === '1' || m.tipo === 'nota' || SIN_PLURAL[m.id]) return m.nombre;   // singular solo con un "1" exacto ("1-3" o "1,5" no lo son)
   if (PLURAL_ESP[m.id]) return PLURAL_ESP[m.id];
   const s = m.nombre;
   if (/[^aeiou]y$/i.test(s)) return s.slice(0, -1) + 'ies';
@@ -2225,19 +2256,20 @@ function lineaBloque(b) {
     const nombre = m ? (que || u0 !== 'reps' ? m.nombre : plural(m, '')) : String(b.nombre || '').trim();
     return ['Max', que, nombre, String(b.carga || '').trim()].filter(Boolean).join(' ');
   }
-  const cant = ud !== 'reps' && /^\d+(?:[.,]\d+)?$/.test(n) ? n + ' ' + ud : n;
+  const cant = ud !== 'reps' && /^\d+(?:[.,]\d+)?(?:\s*-\s*\d+(?:[.,]\d+)?)?$/.test(n) ? n + ' ' + ud : n;   // también en rangos: "3-5 m Run"
   const nombre = m ? (ud === 'reps' ? plural(m, n) : m.nombre) : String(b.nombre || '').trim();
   return [cant, nombre, String(b.carga || '').trim()].filter(Boolean).join(' ');
 }
-function numerosEsquema(esq) {
+function numerosEsquema(esq, type) {
   const t = String(esq || '').trim();
-  return ESQUEMA_RE.test(t) ? t.split(/\s*[-x×]\s*/).map(Number).filter((n) => n > 0) : [];
+  if (type === 'strength') return ESQUEMA_RE.test(t) ? t.split(/\s*[-x×]\s*/).map(Number).filter((n) => n > 0) : [];
+  return ESQUEMA_REPS_RE.test(t) ? t.split(/\s*-\s*/).map(Number) : [];       // fuera de Fuerza solo valen los guiones: un 5x5 no son 5-5 reps
 }
 function llevaEsquema(type) { return type === 'fortime' || type === 'quality' || type === 'interval' || type === 'strength' || type === 'other'; }
 /* La primera línea, al estilo de los héroes: "21-15-9 reps for time of:", "5 rounds for time of:", "AMRAP 12 min:". */
 function cabeceraEntreno(w) {
   const esq = String(w.esquema || '').trim();
-  const nums = llevaEsquema(w.type) ? numerosEsquema(esq) : [];
+  const nums = llevaEsquema(w.type) ? numerosEsquema(esq, w.type) : [];
   const serie = nums.length > 1 ? nums.join('-') : '';
   const rondas = nums.length === 1 ? nums[0] : 0;
   switch (w.type) {
@@ -2279,6 +2311,18 @@ function parseaTexto(desc) {
   });
   return { filas, notas: notas.join(' · ') };
 }
+/* Al volver a bloques, la primera línea que acaba en ":" aporta el esquema ("21-15-9 reps for time of:", "5 rounds for time of:",
+   "5x5:" en Fuerza) si el campo está vacío, y los minutos de un AMRAP ("AMRAP 20 min:"). */
+function cabeceraAForm(desc) {
+  const cab = String(desc || '').split('\n').map((l) => l.trim()).find((l) => /:$/.test(l));
+  if (!cab) return;
+  const type = $('#w-type').value, esq = $('#w-esq'), dur = $('#w-dur');
+  const m = type === 'strength' ? cab.match(/^(\d+\s*[x×]\s*\d+)\s*:$/i) : cab.match(/^(\d+(?:\s*-\s*\d+)+)\b/) || cab.match(/^(\d+)\s+(?:rounds?|rondas?|intervals?|intervalos?)\b/i);
+  const v = m ? m[1].replace(/\s+/g, '') : '';
+  if (v && esq && llevaEsquema(type) && !esq.value.trim() && esquemaValido(v, type)) esq.value = v;
+  const a = cab.match(/^AMRAP\s+(\d+)\s*min/i);
+  if (a && type === 'amrap' && dur) dur.value = a[1];
+}
 /* La unidad va pegada al número: un desplegable nativo invisible encima de "reps ▾". Si la
    fila trae una unidad distinta de la de su movimiento, cuenta como elegida a mano. */
 function udSelectHtml(ud, elegida) {
@@ -2290,7 +2334,7 @@ function filaMovHtml(b) {
   const m = movPorId(b.mov);
   const ud = udDeBloque(b);
   return '<div class="mv-item"><div class="mv-row">' +
-    '<div class="cant-ud' + (esMax(ud) ? ' es-max' : '') + '"><input class="cant" type="text" inputmode="numeric" placeholder="—" value="' + esc(partesCant(b.cant).n) + '" maxlength="10" autocomplete="off" aria-label="Cantidad">' + udSelectHtml(ud, ud !== udDeMov(m)) + '</div>' +
+    '<div class="cant-ud' + (esMax(ud) ? ' es-max' : '') + '"><input class="cant" type="text" inputmode="numeric" placeholder="—" value="' + esc(partesCant(b.cant).n) + '" maxlength="16" autocomplete="off" aria-label="Cantidad">' + udSelectHtml(ud, ud !== udDeMov(m)) + '</div>' +
     '<input class="mv-q" type="text" placeholder="Movimiento" value="' + esc(m ? m.nombre : (b.nombre || '')) + '" data-mov="' + esc(m ? m.id : '') + '" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Movimiento">' +
     '<input class="carga" type="text" placeholder="kg" value="' + esc(b.carga || '') + '" maxlength="16" autocomplete="off" aria-label="Carga">' +
     '<button type="button" class="icon-btn" data-action="w-row-del" aria-label="Quitar movimiento">' + icon('x') + '</button>' +
@@ -2333,7 +2377,7 @@ function eligeMov(item, id, nombre) {
   if (sel && !sel.dataset.elegida) ponUd(sel, udDeMov(m));      // la unidad sigue al movimiento, salvo que la hayas cambiado a mano
   cierraListasMov(); q.blur();
   pintaPreviewEntreno();
-  if (sel && esMax(sel.value)) puntuaMaximos();                // un máximo de Run no se puntúa como uno de Pull-ups
+  puntuaMaximos();                                             // un máximo de Run no se puntúa como uno de Pull-ups (y un movimiento nuevo puede quitar el último máximo)
 }
 function esquemaChips(type) {
   const chips = type === 'strength' ? [['5x5', '5x5'], ['5x3', '5x3'], ['3x3', '3x3'], ['10x1', '10x1']] : [['1 ronda', ''], ['3', '3'], ['5', '5'], ['21-15-9', '21-15-9'], ['15-12-9', '15-12-9'], ['10→1', '10-9-8-7-6-5-4-3-2-1']];
@@ -2344,30 +2388,36 @@ function esquemaHtml(w) {
     '<input type="text" id="w-esq" value="' + esc(w.esquema || '') + '" placeholder="5 (rondas) · 21-15-9 · 5x5" maxlength="40" autocomplete="off">' +
     '<div class="chips" id="w-esq-chips">' + esquemaChips(w.type) + '</div></div>';
 }
+/* La casilla de cantidad con el cursor dentro: lo que se teclea ahí ("máx cal", "400 m") se deja como está
+   hasta salir de ella, para no esconderla ni cambiarla a medias. */
+let cantEscribiendo = null;
 /* Lee el formulario tal cual está (sirve para la vista previa y para guardar). */
 function leerFormEntreno() {
-  const num = (id, def) => { const el = $(id); const v = el ? Number(el.value) : NaN; return isNaN(v) ? def : v; };
+  const num = (id, def) => { const el = $(id); const t = el ? el.value.trim() : ''; const v = t === '' ? NaN : Number(t); return isNaN(v) ? def : Math.round(v); };   // vacío = el valor por defecto; sin decimales
   const type = $('#w-type').value;
   const build = $('#w-build');
-  let maxEscrito = false;
-  const bloques = $$('#w-rows .mv-item').map((it) => {
+  let maxEscrito = false, sinMov = 0;
+  const bloques = $$('#w-rows .mv-item').map((it, i) => {
     const q = $('.mv-q', it); const nombre = q.value.trim();
     const m = movPorId(q.dataset.mov) || movPorNombre(nombre);
     const b = {};
     const cant = $('.cant', it), sel = $('.ud-sel', it);
     const c = partesCant(cant.value), carga = $('.carga', it).value.trim();
-    if (esMax(c.u) && sel) { cant.value = ''; sel.dataset.elegida = '1'; ponUd(sel, c.u); maxEscrito = true; }   // "máx" escrito pasa al selector
+    const escribe = cant === cantEscribiendo;
+    if (c.u && sel && !escribe) { cant.value = c.n; sel.dataset.elegida = '1'; ponUd(sel, c.u); if (esMax(c.u)) maxEscrito = true; }   // la unidad escrita ("máx", "400 m", "1,5 km") pasa al selector al salir de la casilla
     const elegida = sel && sel.dataset.elegida ? sel.value : '';
     const ud = esMax(elegida) ? elegida : c.u || elegida || udDeMov(m);   // "máx" elegido manda; si no, "400 m" escrito, la elegida o la del movimiento
-    if (sel && sel.value !== ud) ponUd(sel, ud);                             // y la fila enseña la que se va a usar
+    if (sel && sel.value !== ud && !(escribe && esMax(ud))) ponUd(sel, ud);   // y la fila enseña la que se va a usar (un "máx" a medio teclear no esconde la casilla)
     if (c.n && !esMax(ud)) b.cant = c.n;                                     // el número que quedara bajo un "máx" no se guarda
     if (m) b.mov = m.id; else if (nombre) b.nombre = nombre;
     b.ud = ud;
     if (carga) b.carga = carga;
+    if (!sinMov && !m && !nombre && (c.n || esMax(ud) || carga)) sinMov = i + 1;   // una fila con cantidad, máx o carga y sin movimiento
     return b;
   }).filter((b) => b.mov || b.nombre);
   if (maxEscrito) puntuaMaximos();
   return {
+    sinMov,
     type, scoreType: type === 'quality' ? 'done' : ($('#w-score').value === 'done' ? DEFAULT_SCORE[type] : $('#w-score').value), modo: build && !build.hidden ? 'bloques' : 'texto',
     durationMin: type === 'amrap' ? clamp(num('#w-dur', 12), 1, 120) : 0,
     timeCapMin: (type === 'fortime' || type === 'interval') ? clamp(num('#w-cap', 0), 0, 180) : 0,
@@ -2406,10 +2456,12 @@ function openWorkoutForm(existing, presetDate, borrador) {
       '<div class="field"><label for="w-desc">Entreno</label><textarea id="w-desc" placeholder="21-15-9 reps for time of:&#10;Thrusters 43/30 kg&#10;Pull-ups">' + esc(w.description || '') + '</textarea><span class="hint">Una línea por movimiento. Pon las cargas para que quede claro qué es Rx.</span>' +
       '<button type="button" class="link" data-action="w-modo" data-modo="bloques">Mejor elegir los movimientos de la lista</button></div>' +
     '</div>' +
-    '<div class="field"><label for="w-date">Programar para (opcional)</label><input type="date" id="w-date" value="' + esc(w.scheduledDate || '') + '"><span class="hint">Saldrá como “WOD de hoy” ese día.</span></div>' +
+    '<div class="field"><label for="w-date">Programar para (opcional)</label><input type="date" id="w-date" min="2000-01-01" value="' + esc(w.scheduledDate || '') + '"><span class="hint">Saldrá como “WOD de hoy” ese día.</span></div>' +
     '<p class="form-error" id="w-error"></p>';
   openSheet({ title: existing ? 'Editar entreno' : 'Nuevo entreno', body, foot: '<button class="btn ghost" data-action="close-sheet">Cancelar</button><button class="btn primary" data-action="save-workout" data-id="' + esc(existing ? existing.id : '') + '">Guardar</button>' });
   pintaPreviewEntreno();
+  if (porBloques) $('#w-texto').dataset.generado = $('#w-desc').value;   // el texto que trae es el de los bloques: mientras no lo toques se rehace con ellos
+  $('#w-score').dataset.maximos = situacionMaximos();                    // lo que ya trae el entreno se da por visto: ni se avisa ni se pisa lo guardado
 }
 function workoutParams(w) {
   const t = w.type;
@@ -2435,32 +2487,66 @@ function puntuaDeMaximos(filas) {
   if (!mx.length) return '';
   return mx.every((f) => f.ud === 'max' && udDeMov(movPorId(f.mov)) === 'm') ? 'distance' : 'reps';
 }
-function puntuaMaximos() {
-  const t = $('#w-type'), sc = $('#w-score'), build = $('#w-build'), d = $('#w-desc');
-  if (!t || !sc || sc.disabled || !PUNTUA_MAXIMOS[t.value]) return;
+/* Lo que hay ahora en el formulario: '' (sin máximos), 'reps' o 'distance'. Cuenta lo que se ve: la unidad tecleada
+   ("máx cal") aunque aún no haya pasado al selector, y el movimiento escrito entero aunque no se haya elegido de la lista. */
+function situacionMaximos() {
+  const build = $('#w-build'), d = $('#w-desc');
   const filas = build && !build.hidden
     ? $$('#w-rows .mv-item').map((it) => {                     // una fila aún sin movimiento no cuenta
-      const q = $('.mv-q', it), sel = $('.ud-sel', it), m = movPorId(q.dataset.mov) || movPorNombre(q.value);
-      return { ud: sel ? sel.value : '', mov: m ? m.id : '', vale: !!(m || q.value.trim()) };
+      const q = $('.mv-q', it), sel = $('.ud-sel', it), cu = partesCant($('.cant', it).value).u, m = movPorId(q.dataset.mov) || movPorNombre(q.value);
+      return { ud: esMax(cu) ? cu : sel ? sel.value : '', mov: m ? m.id : '', vale: !!(m || q.value.trim()) };
     }).filter((f) => f.vale)
     : d ? parseaTexto(d.value).filas.map((f) => ({ ud: udDeBloque(f), mov: f.mov })) : [];
-  const que = puntuaDeMaximos(filas);
-  if (!que || sc.value === que) return;
-  sc.value = que;
-  toast(que === 'distance' ? 'Con máximos de distancia se puntúa por metros' : 'Con máximos se puntúa por reps totales');
+  return puntuaDeMaximos(filas);
 }
-async function saveWorkout(existingId) {
+/* Solo actúa cuando CAMBIA la situación (se guarda en #w-score.dataset.maximos): lo que elijas a mano después
+   se respeta. Con máximos pone reps o metros; al quitar el último, vuelve a lo de siempre del formato si
+   seguía en lo automático. Enseña el aviso y lo devuelve ('' si no hay). */
+function puntuaMaximos() {
+  const t = $('#w-type'), sc = $('#w-score');
+  if (!t || !sc || sc.disabled || !PUNTUA_MAXIMOS[t.value]) return '';
+  const que = situacionMaximos(), antes = sc.dataset.maximos || '';
+  if (que === antes) return '';
+  sc.dataset.maximos = que;
+  let aviso = '';
+  if (que && sc.value !== que) {
+    sc.value = que;
+    aviso = que === 'distance' ? 'Con máximos de distancia se puntúa por metros' : 'Con máximos se puntúa por reps totales';
+  } else if (!que && sc.value === antes && sc.value !== DEFAULT_SCORE[t.value]) {
+    sc.value = DEFAULT_SCORE[t.value];
+    aviso = 'Sin máximos, se puntúa por ' + SCORE_LABEL[sc.value];
+  }
+  if (aviso) toast(aviso);
+  return aviso;
+}
+async function saveWorkout(existingId, confirma) {
   const err = $('#w-error'); err.textContent = '';
   const existing = existingId ? state.workouts.find((x) => x.id === existingId) : null;
   if (existingId && !puedoEditarEntreno(existing)) { err.textContent = 'Ese entreno lo creó otra persona.'; return; }
   const name = $('#w-name').value.trim(); const scheduledDate = $('#w-date').value;
+  const aviso = puntuaMaximos();                                  // lo último que se haya escrito cuenta aunque no se saliera de la casilla; el aviso también va en el toast final
   const f = leerFormEntreno();
+  const gen = $('#w-texto').dataset.generado;
   if (!name) { err.textContent = 'Ponle un nombre al entreno.'; $('#w-name').focus(); return; }
-  if (scheduledDate && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) { err.textContent = 'Fecha no válida.'; return; }
+  if (scheduledDate && (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) || scheduledDate < '2000-01-01')) { err.textContent = 'Fecha no válida.'; return; }
   if (f.modo === 'bloques') {
-    if (f.esquema && f.type !== 'strength' && !ESQUEMA_RE.test(f.esquema)) { err.textContent = 'El esquema es un número de rondas (5) o reps separadas por guiones (21-15-9).'; $('#w-esq').focus(); return; }
+    if (!esquemaValido(f.esquema, f.type)) { err.textContent = 'El esquema es un número de rondas (5) o reps separadas por guiones (21-15-9).'; $('#w-esq').focus(); return; }
+    if (f.sinMov) { err.textContent = 'A la fila ' + f.sinMov + ' le falta el movimiento.'; $$('#w-rows .mv-q')[f.sinMov - 1].focus(); return; }
     if (!f.bloques.length) { err.textContent = 'Añade al menos un movimiento.'; return; }
-  } else if (!f.texto) { err.textContent = 'Escribe el entreno (movimientos y reps).'; return; }
+  } else {
+    if (!f.texto.split('\n').some((l) => l.trim() && !/:$/.test(l.trim()))) { err.textContent = 'Escribe el entreno (movimientos y reps).'; return; }   // la cabecera sola no es un entreno
+    if (gen && $('#w-desc').value === gen && f.bloques.length && esquemaValido(f.esquema, f.type)) f.modo = 'bloques';   // el texto que no has tocado sigue siendo el de los bloques
+  }
+  if (existing && !confirma && existing.scoreType !== f.scoreType) {      // marcas ya apuntadas por otro tipo: se avisa antes de dejarlas aparte
+    const otras = state.results.filter((r) => r.workoutId === existing.id && r.scoreType !== f.scoreType).length;
+    if (otras) {
+      const una = otras === 1;
+      err.innerHTML = esc('Hay ' + otras + (una ? ' marca apuntada' : ' marcas apuntadas') + ' por ' + (SCORE_LABEL[existing.scoreType] || existing.scoreType) + '. Si lo cambias a ' + (SCORE_LABEL[f.scoreType] || f.scoreType) +
+        ', ' + (una ? 'se queda aparte' : 'se quedan aparte') + ' en la pizarra hasta que ' + (una ? 'quien la apuntó la corrija' : 'cada uno corrija la suya') + '.') +
+        ' <button type="button" class="link" data-action="save-workout" data-id="' + esc(existing.id) + '" data-confirma="1">Guardar igualmente</button>';
+      return;
+    }
+  }
   const w = Object.assign({}, existing || {}, {
     id: existingId || uid(), name, type: f.type, scoreType: f.scoreType, scheduledDate: scheduledDate || '', modo: f.modo,
     description: f.modo === 'bloques' ? generaDescripcion(f) : f.texto,
@@ -2472,7 +2558,7 @@ async function saveWorkout(existingId) {
   else { delete w.bloques; delete w.esquema; delete w.notas; }
   try {
     await state.store.set('workouts', w.id, w);
-    toast(existing ? 'Entreno actualizado' : 'Entreno creado: ' + w.name);
+    toast((existing ? 'Entreno actualizado' : 'Entreno creado: ' + w.name) + (aviso ? '. ' + aviso : ''));
     go('wod', { id: w.id });                 // go() cierra la hoja y sustituye su entrada
   } catch (e) { err.textContent = 'No se pudo guardar: ' + (e.message || e); }
 }
@@ -2685,13 +2771,15 @@ const ACTIONS = {
       if (state.view === 'wod') go('wods'); else { dismissSheet(); render(); }   // desde Hoy se queda en Hoy
     } else dismissSheet();
   },
-  'save-workout': (el) => saveWorkout(el.dataset.id || null),
+  'save-workout': (el) => saveWorkout(el.dataset.id || null, !!el.dataset.confirma),
   'w-type-change': () => {
     const t = $('#w-type').value; const sc = $('#w-score');
     sc.innerHTML = opcionesPuntua(t, DEFAULT_SCORE[t]); sc.value = DEFAULT_SCORE[t]; sc.disabled = t === 'quality';
+    sc.dataset.maximos = '';                                  // formato nuevo: "Se puntúa por" vuelve a lo suyo y se mira de nuevo si hay máximos
     puntuaMaximos();
     $('#w-params').innerHTML = workoutParams({ type: t, durationMin: 12, timeCapMin: 0, intervalSec: 60, rounds: t === 'tabata' ? 8 : 10, workSec: 20, restSec: 10 });
     const f = $('#w-esq-field'); if (f) { f.hidden = !llevaEsquema(t); $('#w-esq-chips').innerHTML = esquemaChips(t); }
+    const e = $('#w-esq'); if (e && t !== 'strength' && /\d\s*[x×]\s*\d/i.test(e.value)) e.value = '';   // un 5x5 solo vale en Fuerza
     pintaPreviewEntreno();
   },
   'w-row-add': () => {
@@ -2708,18 +2796,24 @@ const ACTIONS = {
     pintaPreviewEntreno(); puntuaMaximos();
   },
   'mv-pick': (el) => { const it = el.closest('.mv-item'); if (it) eligeMov(it, el.dataset.mov, el.dataset.nombre); },
-  'w-ud': (el) => { el.dataset.elegida = '1'; ponUd(el, el.value); pintaPreviewEntreno(); puntuaMaximos(); },
+  'w-ud': (el) => {
+    el.dataset.elegida = '1'; ponUd(el, el.value);
+    const c = $('.cant', el.closest('.mv-item')); if (c) c.value = partesCant(c.value).n;      // la unidad elegida gana a la que hubiera escrita ("400 m")
+    pintaPreviewEntreno(); puntuaMaximos();
+  },
   'w-esq-chip': (el) => { const i = $('#w-esq'); if (!i) return; i.value = el.dataset.v; pintaPreviewEntreno(); },
   'w-modo': (el) => {
     const build = $('#w-build'), texto = $('#w-texto'), d = $('#w-desc'); if (!build || !texto || !d) return;
     if (el.dataset.modo === 'texto') {
-      if (!d.value.trim()) { d.value = generaDescripcion(leerFormEntreno()); texto.dataset.generado = d.value; }
+      if (!d.value.trim() || d.value === texto.dataset.generado) { d.value = generaDescripcion(leerFormEntreno()); texto.dataset.generado = d.value; }   // el texto sin tocar se rehace con lo construido
       build.hidden = true; texto.hidden = false; d.focus();
+      puntuaMaximos();
     } else {
       if (d.value.trim() && d.value !== texto.dataset.generado) {     // lo escrito a mano se convierte en filas, en lo que se pueda
         const r = parseaTexto(d.value);
         if (r.filas.length) $('#w-rows').innerHTML = r.filas.map(filaMovHtml).join('');
-        if (r.notas && $('#w-notas') && !$('#w-notas').value) $('#w-notas').value = r.notas;
+        const nt = $('#w-notas'); if (r.notas && nt && nt.value.indexOf(r.notas) < 0) nt.value = nt.value ? nt.value + ' · ' + r.notas : r.notas;   // la línea Rx se suma a las notas
+        cabeceraAForm(d.value);
       }
       texto.hidden = true; build.hidden = false; pintaPreviewEntreno(); puntuaMaximos();
     }
@@ -2727,11 +2821,17 @@ const ACTIONS = {
   'log-result': (el) => openLogResult(el.dataset.id || (state.view === 'wod' ? state.params.id : null)),
   'log-wod-change': () => {
     const w = getWorkout($('#f-wod').value);
-    $('#f-score').innerHTML = w ? scoreFields(w.scoreType, null, w) : '';
+    $('#f-error').textContent = '';                      // un aviso de otro entreno (o su "Cambiarla por esta") ya no vale
+    $('#f-score').innerHTML = w ? scoreFields(w.scoreType, null, w) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>';
     const hint = $('#f-wod').parentElement.querySelector('.hint'); if (hint) hint.remove();
     if (w) $('#f-wod').insertAdjacentHTML('afterend', '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · ' + esc(puntuaTexto(w)) + '</span>');
   },
-  'toggle-capped': () => { const c = $('#f-capped').checked; $('#f-capped-reps').hidden = !c; },
+  'log-field-change': () => { const e = $('#f-error'); if (e) e.textContent = ''; },     // atleta o fecha distintos: el aviso (y su "Cambiarla por esta") ya no vale
+  'toggle-capped': () => {
+    const c = $('#f-capped').checked, w = getWorkout($('#f-wod').value);
+    $('#f-capped-reps').hidden = !c;
+    $('#f-time').hidden = c && !!w && w.timeCapMin > 0;      // con time cap y sin terminar, el tiempo es el cap: no se pide
+  },
   'save-result': (el) => saveResult((el && el.dataset && el.dataset.reemplaza) || null),
   'edit-result': (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
@@ -2874,7 +2974,18 @@ async function boot() {
     if (t.classList && t.classList.contains('mv-q')) { t.dataset.mov = ''; abreListaMov(t); }   // se filtra según se escribe
     if (t.closest && t.closest('.sheet') && $('#w-preview')) pintaPreviewEntreno();
   });
-  document.addEventListener('focusin', (e) => { const t = e.target; if (t.classList && t.classList.contains('mv-q')) abreListaMov(t); });
+  document.addEventListener('focusin', (e) => {
+    const t = e.target; if (!t.classList) return;
+    if (t.classList.contains('mv-q')) abreListaMov(t);
+    if (t.classList.contains('cant')) cantEscribiendo = t;
+  });
+  document.addEventListener('focusout', (e) => {            // al salir de una casilla del constructor se recoge lo escrito y se mira "Se puntúa por"
+    const t = e.target; if (!t.classList || !$('#w-preview')) return;
+    if (t === cantEscribiendo) cantEscribiendo = null;
+    const aLista = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.mv-list');   // ir a elegir de la lista no es dejar el movimiento a medias
+    if (t.classList.contains('cant') || (t.classList.contains('mv-q') && !aLista)) { pintaPreviewEntreno(); puntuaMaximos(); }
+  });
+  document.addEventListener('change', (e) => { if (e.target.id === 'w-desc') puntuaMaximos(); });   // lo escrito a mano también puede traer máximos
   document.addEventListener('pointerdown', (e) => {         // tocar fuera de la lista de movimientos la cierra
     const t = e.target; if (!$('.mv-item.abierta')) return;
     if (t.closest && (t.closest('.mv-list') || (t.classList && t.classList.contains('mv-q')))) return;

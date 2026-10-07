@@ -504,6 +504,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
 .search input { padding-left: 38px; }
 .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--faint); fill: none; stroke-width: 2; }
 .form-error { color: var(--bad); font-size: 14px; }
+.form-error button.link { background: none; border: 0; padding: 0 0 0 4px; color: var(--accent-strong); font: inherit; text-decoration: underline; }
 
 /* ---------- sheet (modal inferior) ---------- */
 .sheet-backdrop {
