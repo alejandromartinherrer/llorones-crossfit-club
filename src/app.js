@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.4';
+const APP_VERSION = '1.11.5';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -500,6 +500,8 @@ function valorMarca(r) {
   }
   return null;
 }
+/* Reps con el peso de una marca por kg: las apuntadas o, si no se apuntaron, 1 (ese peso se levantó al menos una vez). */
+function repsCarga(r) { return r.reps > 0 ? r.reps : 1; }
 /* --- comparación de resultados: negativo = a mejor que b --- */
 function compareResults(a, b) {
   if (a.scoreType !== b.scoreType) return a.scoreType < b.scoreType ? -1 : 1;   // formatos distintos no se comparan: orden fijo y antisimétrico
@@ -514,7 +516,7 @@ function compareResults(a, b) {
     }
     case 'rounds': return ((b.rounds || 0) - (a.rounds || 0)) || ((b.reps || 0) - (a.reps || 0));
     case 'reps': return (b.reps || 0) - (a.reps || 0);
-    case 'load': return (b.load || 0) - (a.load || 0);
+    case 'load': return ((b.load || 0) - (a.load || 0)) || (repsCarga(b) - repsCarga(a));   // a igualdad de kilos, gana quien hizo más reps con ese peso
     case 'distance': return (b.meters || 0) - (a.meters || 0);
     default: return 0;                         // For quality: solo cuenta Rx delante de scaled
   }
@@ -524,11 +526,16 @@ function fmtScore(r) {
     case 'time': return r.finished === false ? 'CAP · ' + (r.reps || 0) + ' reps' : fmtTime(r.seconds || 0);
     case 'rounds': return (r.rounds || 0) + ' rd' + (r.reps ? ' + ' + r.reps : '');
     case 'reps': return (r.reps || 0) + ' reps';
-    case 'load': return fmtKgNum(r.load || 0) + ' kg';
+    case 'load': return fmtKgNum(r.load || 0) + ' kg' + (r.reps > 0 ? ' × ' + r.reps : '');
     case 'distance': return fmtMetros(r.meters);
     case 'done': return 'Hecho';
     default: return '';
   }
+}
+/* La marca en una columna estrecha (pizarra, tus marcas): «180 kg × 2» solo se parte antes del «×», nunca dentro de «180 kg» ni de «× 2». */
+function scoreHtml(r) {
+  const s = esc(fmtScore(r));
+  return r.scoreType === 'load' ? s.split(' × ').map((t, i) => '<span class="nw">' + (i ? '× ' : '') + t + '</span>').join(' ') : s;
 }
 function periodContains(period, iso) {
   if (!iso) return false;
@@ -1000,7 +1007,7 @@ function viewWod() {
   if (board.length) {
     html += '<ul class="list wod-lb" style="border:0">' + board.map((r, i) => {
       const a = athleteById(r.athleteId);
-      return '<li>' + (r.scoreType === 'done' ? '<span class="pos hecho" title="Hecho">' + icon('check') + '</span>' : '<span class="pos p' + puesto[i] + '">' + puesto[i] + '</span>') + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button></span>' : '') + '</li>';
+      return '<li>' + (r.scoreType === 'done' ? '<span class="pos hecho" title="Hecho">' + icon('check') + '</span>' : '<span class="pos p' + puesto[i] + '">' + puesto[i] + '</span>') + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + scoreHtml(r) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar la marca de ' + esc(a.name) + '">' + icon('trash') + '</button></span>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
     html += '<p class="muted">Nadie lo ha hecho todavía. Sé el primero en la pizarra.</p>';
@@ -1010,7 +1017,7 @@ function viewWod() {
   antiguas.map((r) => r.scoreType).filter((t, i, l) => l.indexOf(t) === i).forEach((t) => {
     html += '<div class="divider"></div><span class="eyebrow">Apuntadas cuando se puntuaba por ' + esc(SCORE_LABEL[t] || t) + '</span><ul class="list wod-lb" style="border:0">' + antiguas.filter((r) => r.scoreType === t).sort(compareResults).map((r) => {
       const a = athleteById(r.athleteId);
-      return '<li><span class="pos">–</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + esc(fmtScore(r)) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button></span>' : '') + '</li>';
+      return '<li><span class="pos">–</span>' + avatar(a, 'sm') + '<span><span class="title">' + esc(a.name) + '</span><br><span class="small muted">' + esc(fmtDate(r.date)) + '</span></span><span class="right"><span class="s">' + scoreHtml(r) + '</span>' + (r.rx ? badge('rx', 'Rx') : '<span class="faint small">scaled</span>') + '</span>' + (puedoBorrarResultado(r) ? '<span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar la marca de ' + esc(a.name) + '">' + icon('pen') + '</button></span>' : '') + '</li>';
     }).join('') + '</ul>';
   });
   if (antiguas.length) html += '<p class="faint small">No se comparan con las de ahora: edítala y ponla por ' + esc(SCORE_LABEL[w.scoreType] || w.scoreType) + '.</p>';
@@ -1018,7 +1025,7 @@ function viewWod() {
   if (m) {
     html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Tus marcas</h2></div>';
     if (mine.length) {
-      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + esc(fmtScore(r)) + (esRepetida(r) ? ' ' + badge('nocuenta', 'Repetida') : !marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></span></li>').join('') + '</ul>';
+      html += '<ul class="list history" style="border:0">' + mine.map((r) => '<li><span><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (r.notes ? '<br><span class="small">' + esc(r.notes) + '</span>' : '') + '</span><span class="s">' + scoreHtml(r) + (esRepetida(r) ? ' ' + badge('nocuenta', 'Repetida') : !marcaValida(r) ? ' ' + badge('nocuenta', 'No cuenta') : (r.rx ? ' ' + badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span><span class="acciones"><button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button><button class="icon-btn" data-action="delete-result" data-id="' + esc(r.id) + '" aria-label="Borrar resultado">' + icon('trash') + '</button></span></li>').join('') + '</ul>';
     } else {
       html += '<p class="muted">Todavía no tienes marca en este entreno.</p>';
     }
@@ -1437,7 +1444,9 @@ function scoreFields(scoreType, pre, w) {
     return '<div class="field"><label for="f-reps">Reps totales</label><input type="number" id="f-reps" min="0" value="' + (pre.reps != null ? pre.reps : '') + '" inputmode="numeric">' +
       (mx ? '<span class="hint">Suma las reps de todas las rondas' + (mx === 'cal' ? '; cada caloría cuenta como una rep' : '') + '.</span>' : '') + '</div>';
   }
-  if (scoreType === 'load') return '<div class="field"><label for="f-load">Peso (kg)</label><input type="number" id="f-load" min="0" step="0.5" value="' + (pre.load != null ? pre.load : '') + '" inputmode="decimal"></div>';
+  if (scoreType === 'load') return '<div class="field"><div class="inline-fields"><div class="field"><label for="f-load">Peso (kg)</label><input type="number" id="f-load" min="0" step="0.5" value="' + (pre.load != null ? pre.load : '') + '" inputmode="decimal"></div>' +
+    '<div class="field"><label for="f-load-reps">Reps con ese peso</label><input type="number" id="f-load-reps" min="1" step="1" placeholder="opcional" value="' + (pre.reps > 0 ? pre.reps : '') + '" inputmode="numeric"></div></div>' +   // desde el crono llega reps 0: vacío
+    '<span class="hint">Opcional. Con los mismos kilos gana quien hizo más reps; vacío cuenta como 1.</span></div>';
   if (scoreType === 'distance') return '<div class="field"><label for="f-meters">Metros</label><input type="number" id="f-meters" min="0" step="1" value="' + (pre.meters != null ? pre.meters : '') + '" inputmode="numeric"></div>';
   if (scoreType === 'done') return '<p class="sin-marca">For quality: no hay crono ni marca, todos hacen lo mismo. Apunta que lo has hecho y, si lo escalaste, quita el Rx.</p>';
   return '';
@@ -1537,7 +1546,11 @@ async function saveResult(reemplazaId) {
   } else if (w.scoreType === 'load') {
     const load = Number($('#f-load').value);
     if (!(load > 0)) { err.textContent = 'Pon el peso en kilos.'; return; }
+    const campo = $('#f-load-reps'), txt = campo ? campo.value.trim() : '', reps = Number(txt);   // opcionales: vacío = no apuntadas
+    const malEscrito = !!(campo && campo.validity && campo.validity.badInput);                     // "1e" en un campo numérico se lee como vacío: no se guarda como si no hubiera nada
+    if (malEscrito || (txt !== '' && !(Number.isInteger(reps) && reps >= 1))) { err.textContent = 'Las reps con ese peso van en un número entero, de 1 en adelante. Si no las sabes, déjalo vacío.'; return; }
     r.load = load;
+    if (txt !== '') r.reps = reps;
   } else if (w.scoreType === 'distance') {
     const meters = Number($('#f-meters').value);
     if (!(meters > 0)) { err.textContent = 'Pon los metros que hiciste.'; return; }
