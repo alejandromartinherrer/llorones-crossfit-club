@@ -13,7 +13,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-crossfit-club', branch: 'data', path: 'data/sync.json' };
-const APP_VERSION = '1.11.5';
+const APP_VERSION = '1.11.6';
 /* Quien montó el club manda desde el principio. Después puede nombrar a más
    admins desde Perfil, y eso queda guardado en el propio atleta. */
 const ADMINS_INICIALES = ['mtr14k1bb9bg49'];
@@ -545,6 +545,15 @@ function periodContains(period, iso) {
   if (period === 'week') return isoWeekKey(iso) === isoWeekKey(t);
   return true;
 }
+/* La semana activa cuenta entera en el mes de su jueves, como las semanas ISO: una a caballo entre
+   dos meses es de uno solo, con todos sus días, y la suma de los meses da lo de la temporada. */
+function semanaEnPeriodo(period, iso) {
+  if (period !== 'month') return periodContains(period, iso);
+  if (!iso) return false;
+  const d = parseDate(iso);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));       // el jueves de su semana (de lunes a domingo)
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) === todayISO().slice(0, 7);
+}
 const PERIOD_LABEL = { week: 'esta semana', month: 'este mes', season: 'la temporada' };
 const PTS = { marca: 5, rendimiento: 40, lider: 5, rx: 5, hero: 10, girl: 5, prueba: 30, pr: 5, semana: 5 };
 const RULES = [
@@ -562,8 +571,9 @@ const RULES = [
 
 /* Rendimiento de cada atleta en un entreno: 0 a 1 comparando su mejor marca con
    la mejor del club. Quien lo ha hecho solo se queda a la mitad hasta que otro lo
-   haga; una marca sin terminar (time cap) nunca pasa de la mitad. En un For quality
-   no hay marca que comparar: todos se quedan en la mitad. */
+   haga; una marca sin terminar (time cap) nunca pasa de la mitad, y una escalada no
+   pasa de lo que saque el Rx con peor marca. En un For quality no hay marca que
+   comparar: todos se quedan en la mitad. */
 function rendimientosDeEntreno(mejorPorAtleta) {
   const ids = Object.keys(mejorPorAtleta);
   const out = {};
@@ -577,10 +587,17 @@ function rendimientosDeEntreno(mejorPorAtleta) {
   const maxV = Math.max.apply(null, Object.values(valores).concat([0]));
   const maxCap = Math.max.apply(null, Object.values(capReps).concat([0]));
   const solo = ids.length < 2;
+  const ratios = {};
   ids.forEach((id) => {
     let ratio = 0;
     if (valores[id] != null && maxV > 0) ratio = valores[id] / maxV;
     else if (capReps[id] != null) ratio = 0.5 * (maxCap > 0 ? capReps[id] / maxCap : 1);
+    ratios[id] = ratio;
+  });
+  const rxs = ids.filter((id) => mejorPorAtleta[id].rx);
+  const topeEscalado = rxs.length ? Math.min.apply(null, rxs.map((id) => ratios[id])) : Infinity;
+  ids.forEach((id) => {
+    let ratio = mejorPorAtleta[id].rx ? ratios[id] : Math.min(ratios[id], topeEscalado);   // como en la pizarra, el Rx va delante: un escalado no saca más que el peor Rx
     if (solo) ratio = ratio * 0.5;
     out[id] = mejorPorAtleta[id].scoreType === 'done' ? 0.5 : Math.max(0, Math.min(1, ratio));
   });
@@ -626,7 +643,7 @@ function computeStandings(period) {
     }
   });
   const days = {};
-  pr.forEach((r) => { const k = r.athleteId + '|' + isoWeekKey(r.date); (days[k] = days[k] || new Set()).add(r.date); });
+  valid.filter((r) => semanaEnPeriodo(period, r.date)).forEach((r) => { const k = r.athleteId + '|' + isoWeekKey(r.date); (days[k] = days[k] || new Set()).add(r.date); });
   Object.keys(days).forEach((k) => { if (days[k].size >= 3) ensure(k.split('|')[0]).weeks += PTS.semana; });
   const rows = state.athletes.map((a) => {
     const p = ensure(a.id);
@@ -1462,6 +1479,12 @@ function maximosDe(w) {
   const d = String((w && w.description) || '');
   return MAX_CAL_LINEA.test(d) ? 'cal' : MAX_LINEA.test(d) ? 'reps' : '';
 }
+/* Al apuntar se propone hoy; quien apunta al día siguiente tiene «Ayer» a un toque. */
+const FECHA_CHIPS = [['Hoy', 0], ['Ayer', 1]];
+function marcaFechaChips() {
+  const f = $('#f-date'); if (!f) return;
+  $$('.fecha-chips .chip').forEach((b) => b.setAttribute('aria-pressed', String(f.value === isoHaceDias(Number(b.dataset.dias)))));
+}
 function openLogResult(workoutId, pre, editId) {
   pre = pre || {};
   const existente = editId ? state.results.find((x) => x.id === editId) : null;
@@ -1476,7 +1499,8 @@ function openLogResult(workoutId, pre, editId) {
     (soyAdmin()
       ? '<select id="f-athlete" data-action="log-field-change">' + athletes.map((a) => '<option value="' + esc(a.id) + '"' + (a.id === (pre.athleteId || state.meId) ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>'
       : '<select id="f-athlete" disabled><option value="' + esc(state.meId || '') + '">' + esc((me() || { name: '—' }).name) + '</option></select>') + '</div>' +
-    '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" data-action="log-field-change" value="' + esc(pre.date || todayISO()) + '" min="2000-01-01" max="' + todayISO() + '"></div></div>' +
+    '<div class="field"><label for="f-date">Fecha</label><input type="date" id="f-date" data-action="log-field-change" value="' + esc(pre.date || todayISO()) + '" min="2000-01-01" max="' + todayISO() + '">' +
+      '<div class="chips fecha-chips">' + FECHA_CHIPS.map((c) => '<button type="button" class="chip sm" data-action="log-fecha" data-dias="' + c[1] + '" aria-pressed="' + ((pre.date || todayISO()) === isoHaceDias(c[1])) + '">' + c[0] + '</button>').join('') + '</div></div></div>' +
     '<div id="f-score">' + (otroTipo ? '<p class="sin-marca">Esta marca se apuntó como ' + esc(fmtScore(existente)) + ' (por ' + esc(SCORE_LABEL[existente.scoreType] || existente.scoreType) + '); el entreno ahora se puntúa por ' + esc(SCORE_LABEL[w.scoreType] || w.scoreType) + ': ' + (w.scoreType === 'done' ? 'al guardar solo queda apuntado que lo hiciste.' : 'pon la marca de nuevo.') + '</p>' : '') +
       (w ? scoreFields(w.scoreType, otroTipo ? null : pre, w) : '<p class="muted small">Elige un entreno para ver qué se apunta.</p>') + '</div>' +
     '<label class="check"><input type="checkbox" id="f-rx"' + (pre.rx === false ? '' : ' checked') + '> Rx (tal cual está escrito, con las cargas prescritas). Quítalo si lo escalaste.</label>' +
@@ -1489,7 +1513,24 @@ function readTime() {
   if ([m, s].some((n) => !Number.isInteger(n) || n < 0) || s > 59 || m > 999) return null;   // minutos y segundos enteros
   return Math.round(m * 60 + s);
 }
-async function saveResult(reemplazaId) {
+/* ¿Una cifra de más? Una marca que triplica la mejor del club en ese entreno (en tiempo, que baja
+   de un tercio) o que pasa de lo razonable se avisa en línea, con «Guardar igualmente». */
+const MARCA_TOPE = { reps: [2000, 'reps'], rounds: [200, 'rondas'], distance: [50000, 'metros'], load: [400, 'kg'] };
+function avisoMarcaRara(r, w) {
+  const v = valorMarca(r);
+  if (v == null || !(v > 0)) return '';
+  const otras = state.results.filter((x) => x.workoutId === w.id && x.scoreType === r.scoreType && x.id !== r.id && athleteById(x.athleteId) && marcaValida(x) && !esRepetida(x));
+  let mejor = null;
+  otras.forEach((x) => { const vx = valorMarca(x); if (vx != null && vx > 0 && (!mejor || vx > valorMarca(mejor))) mejor = x; });
+  if (mejor && v > 3 * valorMarca(mejor)) {
+    return '¿Seguro? ' + fmtScore(r) + (r.scoreType === 'time' ? ' es menos de un tercio del mejor tiempo' : ' es más del triple de la mejor marca') + ' del club en este entreno (' + fmtScore(mejor) + ').';
+  }
+  const tope = MARCA_TOPE[r.scoreType];
+  const cifra = r.scoreType === 'rounds' ? r.rounds : r.scoreType === 'distance' ? r.meters : r.scoreType === 'load' ? r.load : r.reps;
+  if (tope && cifra > tope[0]) return '¿Seguro? Más de ' + tope[0].toLocaleString('es-ES') + ' ' + tope[1] + ' es mucho para una marca: mira que no sobre una cifra.';
+  return '';
+}
+async function saveResult(reemplazaId, aunqueRara) {
   const err = $('#f-error'); err.textContent = '';
   const wid = $('#f-wod').value; const w = getWorkout(wid);
   if (!w) { err.textContent = 'Elige un entreno.'; return; }
@@ -1557,6 +1598,11 @@ async function saveResult(reemplazaId) {
     if (!Number.isInteger(meters)) { err.textContent = 'Los metros van en un número entero, sin decimales.'; return; }
     r.meters = meters;
   }                                                         // For quality (done): no hay nada más que leer
+  const rara = aunqueRara ? '' : avisoMarcaRara(r, w);
+  if (rara) {
+    err.innerHTML = esc(rara) + ' <button type="button" class="link" data-action="save-result" data-rara="1"' + (reemplazaId ? ' data-reemplaza="' + esc(reemplazaId) + '"' : '') + '>Guardar igualmente</button>';
+    return;
+  }
   try {
     await state.store.set('results', r.id, r);
     const pr = isPR(Object.assign({}, r));                  // también al corregir: si con el cambio es PR, se avisa igual
@@ -2241,6 +2287,12 @@ const MAX_LINEA = /^\s*m[aá]x(?:imo|imum)?\b/im, MAX_CAL_LINEA = /^\s*m[aá]x(?
 const UD_ESCRITA = { m: 'm', metro: 'm', metros: 'm', meter: 'm', meters: 'm', km: 'km', cal: 'cal', cals: 'cal', calorias: 'cal', calories: 'cal', calorie: 'cal',
   s: 's', seg: 's', sec: 's', secs: 's', segundos: 's', seconds: 's', min: 'min', mins: 'min', minutos: 'min', minutes: 'min', rep: 'reps', reps: 'reps' };
 const udDeMov = (m) => (m && m.ud) || 'reps';
+/* La cantidad de una fila (sin su unidad): números mayores que cero, solos o separados por guiones
+   o barras: 10, 1,5, 10-15, 21-15-9 o 15/12 (♀/♂). */
+function cantValida(n) {
+  const partes = String(n == null ? '' : n).trim().split(/\s*[-/]\s*/);
+  return partes.every((x) => /^\d+(?:[.,]\d+)?$/.test(x) && parseFloat(x.replace(',', '.')) > 0);
+}
 /* "400 m" → {n: '400', u: 'm'}, "1 km" → {n: '1000', u: 'm'}, "15" → {n: '15', u: ''}, "máx cal" → {n: '', u: 'maxcal'}. */
 function partesCant(cant) {
   const c = String(cant || '').trim();
@@ -2409,7 +2461,7 @@ function leerFormEntreno() {
   const num = (id, def) => { const el = $(id); const t = el ? el.value.trim() : ''; const v = t === '' ? NaN : Number(t); return isNaN(v) ? def : Math.round(v); };   // vacío = el valor por defecto; sin decimales
   const type = $('#w-type').value;
   const build = $('#w-build');
-  let maxEscrito = false, sinMov = 0;
+  let maxEscrito = false, sinMov = 0, cantMal = 0, cantMalTxt = '';
   const bloques = $$('#w-rows .mv-item').map((it, i) => {
     const q = $('.mv-q', it); const nombre = q.value.trim();
     const m = movPorId(q.dataset.mov) || movPorNombre(nombre);
@@ -2426,11 +2478,12 @@ function leerFormEntreno() {
     b.ud = ud;
     if (carga) b.carga = carga;
     if (!sinMov && !m && !nombre && (c.n || esMax(ud) || carga)) sinMov = i + 1;   // una fila con cantidad, máx o carga y sin movimiento
+    if (!cantMal && (m || nombre) && b.cant && !cantValida(b.cant)) { cantMal = i + 1; cantMalTxt = b.cant; }   // "15 kg", "5k", "abc" o "0"
     return b;
   }).filter((b) => b.mov || b.nombre);
   if (maxEscrito) puntuaMaximos();
   return {
-    sinMov,
+    sinMov, cantMal, cantMalTxt,
     type, scoreType: type === 'quality' ? 'done' : ($('#w-score').value === 'done' ? DEFAULT_SCORE[type] : $('#w-score').value), modo: build && !build.hidden ? 'bloques' : 'texto',
     durationMin: type === 'amrap' ? clamp(num('#w-dur', 12), 1, 120) : 0,
     timeCapMin: (type === 'fortime' || type === 'interval') ? clamp(num('#w-cap', 0), 0, 180) : 0,
@@ -2545,10 +2598,11 @@ async function saveWorkout(existingId, confirma) {
   if (f.modo === 'bloques') {
     if (!esquemaValido(f.esquema, f.type)) { err.textContent = 'El esquema es un número de rondas (5) o reps separadas por guiones (21-15-9).'; $('#w-esq').focus(); return; }
     if (f.sinMov) { err.textContent = 'A la fila ' + f.sinMov + ' le falta el movimiento.'; $$('#w-rows .mv-q')[f.sinMov - 1].focus(); return; }
+    if (f.cantMal) { err.textContent = 'La cantidad de la fila ' + f.cantMal + ' («' + f.cantMalTxt + '») no vale: pon un número mayor que cero (10), un rango (10-15) o ♀/♂ (15/12). La carga va en su casilla, a la derecha.'; $$('#w-rows .cant')[f.cantMal - 1].focus(); return; }
     if (!f.bloques.length) { err.textContent = 'Añade al menos un movimiento.'; return; }
   } else {
     if (!f.texto.split('\n').some((l) => l.trim() && !/:$/.test(l.trim()))) { err.textContent = 'Escribe el entreno (movimientos y reps).'; return; }   // la cabecera sola no es un entreno
-    if (gen && $('#w-desc').value === gen && f.bloques.length && esquemaValido(f.esquema, f.type)) f.modo = 'bloques';   // el texto que no has tocado sigue siendo el de los bloques
+    if (gen && $('#w-desc').value === gen && f.bloques.length && esquemaValido(f.esquema, f.type) && !f.cantMal) f.modo = 'bloques';   // el texto que no has tocado sigue siendo el de los bloques (si alguna cantidad no vale, se queda como texto: ahí vale lo escrito)
   }
   if (existing && !confirma && existing.scoreType !== f.scoreType) {      // marcas ya apuntadas por otro tipo: se avisa antes de dejarlas aparte
     const otras = state.results.filter((r) => r.workoutId === existing.id && r.scoreType !== f.scoreType).length;
@@ -2839,13 +2893,14 @@ const ACTIONS = {
     const hint = $('#f-wod').parentElement.querySelector('.hint'); if (hint) hint.remove();
     if (w) $('#f-wod').insertAdjacentHTML('afterend', '<span class="hint">' + esc(workoutMeta(w).join(' · ')) + ' · ' + esc(puntuaTexto(w)) + '</span>');
   },
-  'log-field-change': () => { const e = $('#f-error'); if (e) e.textContent = ''; },     // atleta o fecha distintos: el aviso (y su "Cambiarla por esta") ya no vale
+  'log-field-change': () => { const e = $('#f-error'); if (e) e.textContent = ''; marcaFechaChips(); },     // atleta o fecha distintos: el aviso (y su "Cambiarla por esta") ya no vale
+  'log-fecha': (el) => { const f = $('#f-date'); if (!f) return; f.value = isoHaceDias(Number(el.dataset.dias) || 0); ACTIONS['log-field-change'](); },
   'toggle-capped': () => {
     const c = $('#f-capped').checked, w = getWorkout($('#f-wod').value);
     $('#f-capped-reps').hidden = !c;
     $('#f-time').hidden = c && !!w && w.timeCapMin > 0;      // con time cap y sin terminar, el tiempo es el cap: no se pide
   },
-  'save-result': (el) => saveResult((el && el.dataset && el.dataset.reemplaza) || null),
+  'save-result': (el) => saveResult((el && el.dataset && el.dataset.reemplaza) || null, !!(el && el.dataset && el.dataset.rara)),
   'edit-result': (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
     if (!puedoEditarResultado(r)) { noPuedes('Solo puedes cambiar tus marcas'); return; }
