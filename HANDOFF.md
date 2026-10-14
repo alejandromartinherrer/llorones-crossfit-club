@@ -1,6 +1,6 @@
 # Llorones Crossfit Club — Handoff
 
-## Estado actual (v1.11.5 — 2026-10-14)
+## Estado actual (v1.11.6 — 2026-10-14)
 - Repo: `github.com/alejandromartinherrer/llorones-crossfit-club` (público; Pages publica `main`).
 - App: <https://alejandromartinherrer.github.io/llorones-crossfit-club/> · un solo `index.html` generado
   por `build.js` desde `src/` y `data/`. Los móviles se ponen al día solos al abrirla (miran `version.json`).
@@ -8,9 +8,14 @@
 - Datos del club: `data/sync.json` en la rama **`data`**, que solo toca la app. Leer es público y escribir
   necesita el código de acceso que cada uno pega en su móvil. El código nunca va al repo; `gh_token.txt` está
   en `.gitignore`.
-- Pruebas: `test/sync.test.js` (sin Chrome) y 15 archivos de uso real en Chrome sin cabeza; el último es
-  `pesos` (marcas por kg con reps). Con la v1.11.5 pasan todos: 562 comprobaciones en los 15 de navegador,
+- Pruebas: `test/sync.test.js` (sin Chrome) y 16 archivos de uso real en Chrome sin cabeza; el último es
+  `reglas` (lo de la v1.11.6). Con la v1.11.6 pasan todos: 603 comprobaciones en los 16 de navegador,
   más la fusión de `sync.test.js`.
+- v1.11.6 (14/10/2026): las dudas de «Pendiente» decididas con el usuario. Botones **Hoy / Ayer** junto a la
+  fecha al apuntar; una marca **escalada no saca más rendimiento que el peor Rx** de ese entreno; la **semana
+  activa** a caballo entre dos meses cuenta entera en el mes de su jueves; las **cantidades de las filas** se
+  validan al guardar; y una **marca rara** (más del triple de la mejor del club, o por encima de 2000 reps,
+  200 rondas, 50.000 m o 400 kg) pide «¿Seguro?» con «Guardar igualmente».
 - v1.11.5 (14/10/2026): en los entrenos por kg se apuntan también, si se quiere, las **reps con ese peso**
   (180 kg × 2), que desempatan a igualdad de kilos. Salió del peso muerto del 13/10 (cada 90 s × 8:
   5-5-4-4-3-3-2-2, subiendo de peso hasta el máximo).
@@ -34,6 +39,8 @@
   deja fuera `live5.js`) y `timeout 900`, mirando el código de salida y la línea `== RESULTADO` de cada log
   (los logs, fuera del repo). Como cada archivo tiene sus puertos, se puede repartir en grupos en paralelo.
 - Mirar la nube sin tocarla: `git fetch origin data` y `git show origin/data:data/sync.json`.
+- Una prueba que necesite otro «hoy» (meses, semanas) sustituye `todayISO` en la página y la deja como
+  estaba al acabar: así lo hace `test/reglas.test.js` con la semana activa.
 - Comprobar la publicación: `version.json` en vivo y el `index.html` en vivo igual a `dist/index.html` sin
   los CR (`cmp <(tr -d '\r' < vivo) <(tr -d '\r' < dist/index.html)`).
 - La especificación de cara al club es el `README.md` («Cómo se puntúa», «Quién puede qué», «Crear
@@ -70,15 +77,18 @@
   `parseCaducidad`/`diasHasta` (caducidad del código de acceso).
 - Estado y permisos: `state` · `soyAdmin`, `puedoEditar*`, `puedoBorrar*` · PIN: `creaPin`, `compruebaPin`.
 - Marcas y puntos: `PTS` · `SCORE_LABEL` · `marcaValida`/`valorMarca` · `compareResults` (primero el
-  `scoreType`; en kg, a igualdad de kilos, `repsCarga`) · `fmtScore`/`scoreHtml` · `rendimientosDeEntreno` ·
-  `computeStandings` (por `workoutId|scoreType`) · `wodBoard` · `marcasQueCuentan` · `isPR`. En una marca por
+  `scoreType`; en kg, a igualdad de kilos, `repsCarga`) · `fmtScore`/`scoreHtml` · `rendimientosDeEntreno`
+  (con el tope del escalado al peor Rx) · `computeStandings` (por `workoutId|scoreType`; la semana activa,
+  con `semanaEnPeriodo`) · `wodBoard` · `marcasQueCuentan` · `isPR`. En una marca por
   kg, `reps` son las reps con ese peso (opcionales; sin ellas cuentan como 1) y solo desempatan: `valorMarca`,
   y con él el rendimiento, mira solo los kilos. Quien lea `r.reps` tiene que mirar antes el `scoreType`.
 - Apuntar una marca: `scoreFields` (en kg, `#f-load` y `#f-load-reps`) · `maximosDe` · `openLogResult` (la
-  fecha se propone con la de hoy) · `readTime` · `saveResult` (aviso en línea con «Cambiarla por esta»).
+  fecha se propone con la de hoy; `FECHA_CHIPS`/`marcaFechaChips` para Hoy / Ayer) · `readTime` · `saveResult`
+  (avisos en línea: «Cambiarla por esta» y, después, `avisoMarcaRara` con `MARCA_TOPE` y «Guardar
+  igualmente», que lleva el `data-reemplaza` si venía de cambiar otra).
 - Formulario de entrenos: `openWorkoutForm` · `leerFormEntreno` · `pintaPreviewEntreno` · texto ⇄ bloques con
   `parseaTexto`, `generaDescripcion`, `cabeceraEntreno`, `cabeceraAForm` · filas con `lineaBloque`, `plural`,
-  `partesCant`, `udDeBloque` · esquema con `ESQUEMA_REPS_RE`, `esquemaValido`, `numerosEsquema` · puntuación
+  `partesCant`, `cantValida`, `udDeBloque` · esquema con `ESQUEMA_REPS_RE`, `esquemaValido`, `numerosEsquema` · puntuación
   con `DEFAULT_SCORE`, `opcionesPuntua`, `puntuaDeMaximos`, `situacionMaximos`, `puntuaMaximos` · `saveWorkout`.
 - Pantallas: `viewHome` · `viewWods`/`viewWod` (pizarra y marcas de otro formato) · `viewRanking` · `viewRx` ·
   `viewProfile` · `viewMusculos` · `viewSugeridos` · `viewTimer` (crono: `timer*`, `ajustaReloj`).
@@ -109,37 +119,50 @@ La app existe desde el 06/09/2026; el historial completo está en `git log`.
   igualdad de kilos ponen delante en la pizarra y deciden la mejor marca (+5) y el PR (180 × 3 después de
   180 × 2 es PR); sin apuntar cuentan como 1; el rendimiento sigue saliendo solo de los kilos. En la pizarra,
   «180 kg × 2» solo se parte antes del «×». Prueba nueva: `test/pesos.test.js` (28 comprobaciones).
+- `8849c96` + `b1474d1` v1.11.6 (publicada y comprobada en vivo el 14/10): las dudas de «Pendiente»,
+  decididas con el usuario ese día:
+  - **Fecha**: botones «Hoy» / «Ayer» bajo la fecha de la hoja de apuntar; queda marcado el que coincide.
+  - **Rx frente a escalado** (T5-03): tope al peor Rx. Una marca escalada no pasa del rendimiento del Rx con
+    peor marca, también si ese Rx no terminó (time cap); sin ningún Rx, las escaladas se miden entre ellas.
+    En la nube no cambia nada: de 84 marcas solo 3 son escaladas y ninguna superaba a un Rx.
+  - **Semana activa** (T5-07): cuenta entera, con todos sus días, en el mes de su jueves (como las semanas
+    ISO). Así la suma de los meses da lo de la temporada.
+  - **Cantidades** (T2-08): al guardar un entreno por bloques, una cantidad que no sea un número mayor que
+    cero, un rango, un esquema o ♀/♂ (10, 1,5, 10-15, 21-15-9, 15/12) da error con su fila y el foco en ella.
+    En modo texto vale lo escrito: un entreno pasado a texto sin tocarlo, con una cantidad mala, se guarda
+    como texto y no como filas.
+  - **Marca rara** (sin tope superior): más del triple de la mejor del club en ese entreno (en tiempo, menos
+    de un tercio del mejor) o más de 2000 reps, 200 rondas, 50.000 m o 400 kg (`MARCA_TOPE`) pide
+    «¿Seguro?» con «Guardar igualmente», también después de «Cambiarla por esta».
+  - Prueba nueva: `test/reglas.test.js` (41 comprobaciones).
 
 ## En vuelo
-Nada.
+Nada. `main` = `origin/main`; la rama `dudas-pendientes` ya está fusionada (se puede borrar).
 
-## Pendiente / dudas para decidir
-- **«10.13 - 1» (el peso muerto del 13/10) se puntúa aún por reps** y tiene una marca de 28 reps con fecha
-  14/10. Lo arregla el admin desde la app: editar el entreno, «Se puntúa por: kg» y «Guardar igualmente»;
-  después, quien apuntó reps edita su marca con los kilos, las reps con ese peso y la fecha del 13/10.
-- **Fecha al apuntar**: se propone la de hoy (`pre.date || todayISO()`), así que quien apunta al día siguiente
-  tiene que cambiarla a mano (de las dos marcas del 13/10 apuntadas el 14/10, una se quedó con el 14). Esos
-  entrenos no tenían fecha programada, así que proponer la del entreno no lo habría evitado. ¿Botones
-  «Hoy» / «Ayer» junto a la fecha?
+## Pendiente / a vigilar
+- **«10.13 - 1» (el peso muerto del 13/10) se puntúa aún por reps**: así seguía en la nube a las 11:06 (Madrid) del
+  14/10, con una sola marca, la de Santi (28 reps, fecha 14/10). El usuario decidió arreglarlo desde la app.
+  Pueden hacerlo el admin (Alejandro) o Santi, que creó el entreno: editarlo, «Se puntúa por: kg» y
+  «Guardar igualmente». Después, Santi edita su marca con los kilos, las reps con ese peso y la fecha del
+  13/10 (ahora le basta «Ayer» si lo hace el 14). Comprobar en la nube que ha quedado así.
+- **Rango con unidad tecleada** («3-5 m» en la cantidad): `partesCant` solo separa la unidad de un número
+  suelto, así que ese texto ahora da error de cantidad (antes se guardaba tal cual). Se escribe 3-5 y se
+  elige «m». Si molesta, que `partesCant` entienda rangos con unidad.
+- **Los umbrales del aviso de marca rara** (×3 y `MARCA_TOPE`) son de criterio: ajustarlos si saltan con
+  marcas buenas.
 
-De la auditoría del 07/10 (no se han tocado):
-- **Rx lento frente a escalado rápido** (T5-03): la pizarra y el +5 de mejor marca ponen primero al Rx, pero
-  el rendimiento (hasta 40) solo mira la marca, así que un escalado rápido puede sacar más que un Rx lento.
+Decididos sin cambios (14/10/2026, con el usuario):
 - **«Max Plank»** y otros máximos de segundos (T3-07, T2-10): se puntúan por reps totales y el texto sale sin
-  unidad; «máx» y «máx cal» dan el mismo texto en la bici.
+  unidad (podría ser «Max seconds Plank»). «Máx» en la bici sale como calorías, que es su unidad.
 - **Modo texto** (T1-09, T1-14): la duración, el intervalo y las rondas salen de los campos, no del texto
-  («AMRAP 20 min» escrito con el campo en 12 se queda en 12); un EMOM antiguo sin parámetros recibe 60 s × 10
-  al editarlo.
-- **Semana activa en «Mes»** (T5-07): en una semana a caballo entre dos meses, el +5 no cuenta los días que
-  caen fuera del mes.
-- **Cantidades de texto libre** (T2-08): en la cantidad de una fila, «15 kg», «5k», «abc» o «0» se aceptan tal
-  cual.
-- Sin tope superior en reps, rondas y metros al apuntar.
-- Decididos sin cambios: recortes de rango en silencio (T1-11), cambiar de formato reinicia los parámetros
-  (T1-12) y las líneas libres pasan a filas al volver a bloques (T1-15).
+  («AMRAP 20 min» con el campo en 12 se queda en 12), y un EMOM antiguo sin parámetros recibe 60 s × 10 al
+  editarlo. Solo 3 de los 46 entrenos de la nube están en modo texto.
+- De antes: recortes de rango en silencio (T1-11), cambiar de formato reinicia los parámetros (T1-12) y las
+  líneas libres pasan a filas al volver a bloques (T1-15).
 
 ## Prompt de reanudación
 «Lee `HANDOFF.md` y `README.md` de `C:\Users\ALEJANDRO\GitRepos\llorones-crossfit-club`. La app está en la
-v1.11.5 publicada. Trabaja en una rama del repo; pruebas con móviles `sinNube` y `APP_URL` si el 8765 está
-cogido; nunca `test/live5.js` ni `test/sync.test.js` con `GH_TOKEN` (las dos vacían la nube). Siguiente:
-mirar en la nube si «10.13 - 1» ya se puntúa por kg y decidir con el usuario las dudas de “Pendiente”.»
+v1.11.6 publicada. Trabaja en una rama del repo; pruebas con móviles `sinNube` y `APP_URL` si el 8765 está
+cogido; nunca `test/live5.js` ni `test/sync.test.js` con `GH_TOKEN` (las dos vacían la nube). No quedan
+dudas abiertas. Siguiente: mirar en la nube si «10.13 - 1» ya se puntúa por kg y si la marca de Santi tiene
+los kilos y la fecha del 13/10; si no, recordárselo al usuario.»
