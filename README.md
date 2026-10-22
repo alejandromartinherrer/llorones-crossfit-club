@@ -1,0 +1,165 @@
+# Llorones Crossfit Club
+
+**App:** <https://alejandromartinherrer.github.io/llorones-crossfit-club/> · **Código:** <https://github.com/alejandromartinherrer/llorones-crossfit-club>
+
+La pizarra de la cuadrilla: tiempos, entrenos, cronómetro, los 249 Hero WODs y las 30 Girls de crossfit.com, y una clasificación por puntos. Un solo `index.html`, sin instalación: se abre en el móvil como una web y se puede añadir a la pantalla de inicio (Safari → Compartir → Añadir a pantalla de inicio).
+
+## Cómo compartimos los datos
+
+Los datos de todos (atletas, entrenos propios y marcas) viven en `data/sync.json` del repositorio **privado** `llorones-data`, aparte del código. La app los lee y los escribe sola por la API de GitHub; no hay ningún servidor ni cuenta externa.
+
+- **Los datos son privados** (desde la v1.12.0): sin código de acceso no se ven las marcas de nadie. Antes vivían en la rama `data` de este repositorio, que es público, y el código de acceso también podía escribir en `main`, la web que se ejecuta en el móvil de todos; ahora no puede tocarla.
+- **Hace falta un código de acceso** (un token de GitHub) para leer y para escribir. Cada persona lo pega una vez en **Perfil → Nube → Pegar código de acceso**; se guarda solo en su móvil y nunca sale en las copias exportadas. Sin código, las marcas propias se quedan en el móvil y la pantalla Hoy lo avisa.
+- Cada cambio se sube a los pocos segundos; la app se descarga la copia de la nube al abrirse, al volver a primer plano, al recuperar conexión y cada minuto. Si dos personas apuntan a la vez no se pierde nada: las copias se **fusionan por id** (gana la modificación más reciente; los borrados también se propagan).
+- Si el móvil está sin red, las marcas se guardan en él y se suben solas después.
+- Si el código caduca o se pega mal, la app avisa, deja de traer las marcas de los demás y guarda las tuyas en el móvil hasta que pegues uno bueno.
+
+### Crear el código de acceso (lo hace quien administra el club, una vez)
+
+1. En GitHub, arriba a la derecha: **foto de perfil → Settings**. En la barra lateral izquierda, abajo del todo, **Developer settings**. Allí, bajo el apartado **Personal access tokens**, entra en **Fine-grained tokens** y pulsa **Generate new token**.
+2. **Token name**: lo que quieras, por ejemplo `llorones-app`.
+3. **Resource owner**: deja tu propia cuenta (`alejandromartinherrer`). Si eliges una organización, el repositorio del club no aparecerá en la lista.
+4. **Expiration**: elige **Custom** y pon una fecha; el máximo con fecha son 366 días. GitHub también ofrece **No expiration**, pero no la uses: que caduque es parte de la seguridad de este montaje.
+5. **Repository access**: marca **Only select repositories** y, en el desplegable **Select repositories** que aparece debajo, busca y marca `llorones-data` (no el de la web, `llorones-crossfit-club`).
+6. **Permissions → Repository permissions**: busca **Contents** y ponlo en **Read and write**. No hace falta nada más; GitHub añade solo **Metadata: Read-only**, que aparece marcado y no se puede quitar.
+7. Pulsa **Generate token**. El código (empieza por `github_pat_`) **solo se muestra una vez**: cópialo en ese momento y pásaselo a la cuadrilla. Si cierras la página sin copiarlo, no se puede recuperar y hay que generar otro.
+
+Cada uno lo pega en **Perfil → Nube → Pegar código de acceso**. La app lo comprueba contra GitHub antes de guardarlo: si está mal o ha caducado te lo dice y conserva el que tuvieras.
+
+Riesgo asumido: quien tenga el código puede leer y escribir los datos del club (solo `llorones-data`; la web no). Mitigación: alcance mínimo y caducidad; si se filtra, se revoca en GitHub y se genera otro. Cuando caduque, la app avisa en la pantalla Hoy y en Perfil → Nube.
+
+## Cómo se puntúa
+
+Por cada entreno y día (cuenta la mejor marca de cada uno en ese entreno):
+
+| Concepto | Puntos |
+|---|---|
+| Apuntar una marca válida (una marca en cero no cuenta) | 5 |
+| **Rendimiento**: tu marca frente a la mejor del club en ese entreno | hasta 40 |
+| Entreno *for quality* (sin crono ni marca): en vez del rendimiento, todos los que lo hacen | 20 |
+| Tener la mejor marca del club en ese entreno | +5 |
+| Hacerlo Rx (la casilla viene marcada: quítala si escalaste) | +5 |
+| Hero WOD | +10 |
+| Benchmark (Girls) | +5 |
+| Prueba oficial (DEKA) | +30 |
+| Mejorar tu mejor marca de días anteriores en ese entreno (PR) | +5 |
+| Semana activa (3 días o más con entreno) | +5 |
+
+El **rendimiento** es lo que hace que el resultado importe: quien tiene la mejor marca del club se lleva los 40 y el resto la parte proporcional. La mitad de rondas, la mitad de kilos, la mitad de metros o el doble de tiempo son la mitad de puntos. Así 20 rondas no valen lo mismo que 2, ni 10 minutos lo mismo que 20.
+
+Detalles: si eres el único que ha hecho ese entreno cuenta a la mitad, hasta que otro lo haga. Una marca con time cap sin terminar no pasa de la mitad. Rx siempre queda por delante de scaled en la pizarra, y también en el rendimiento: una marca escalada nunca saca más que el Rx con peor marca de ese entreno (si nadie lo hizo Rx, las escaladas se miden entre ellas). La **semana activa** de una semana a caballo entre dos meses cuenta entera, con todos sus días, en el mes en que cae su jueves (como las semanas ISO), así la suma de los meses da lo mismo que la temporada. Si dos marcas empatan (misma marca y mismo Rx) comparten puesto: 1.º, 1.º y 3.º, tanto en la pizarra como en el podio del ranking. En los **for quality** no hay marca que comparar: cada uno apunta que lo ha hecho (Rx o escalado), todos se llevan la mitad del rendimiento (20), y no hay mejor marca del club ni PR; en la pizarra sale un ✓ en vez del puesto. Cada atleta tiene **una marca por entreno y día**: si apunta otra ese día, la app le ofrece cambiar la que tenía en vez de duplicarla (y si quedara alguna repetida de antes, cuenta la última apuntada, las demás salen como «Repetida» y quien administra las borra desde Perfil). El **PR** es mejorar tu mejor marca de días anteriores en ese entreno: la primera vez que lo haces no es PR, ni una corrección del mismo día. Hacerlo Rx cuando antes fue escalado también cuenta como mejora. Si al corregir una marca pasa a ser PR, la app lo avisa igual que al apuntarla. Los tiempos se apuntan en minutos y segundos (1 h 15 min son 75:00). Minutos, segundos, rondas, repeticiones y metros van en números enteros (los kilos admiten decimales: 82,5 kg) y un tiempo terminado no puede pasar del time cap del entreno: si no llegaste, marca «No lo terminé» y apunta las reps (el tiempo que cuenta es el cap). Las fechas anteriores a 2000 no valen. Al apuntar se propone la fecha de hoy, y junto a ella **Hoy** y **Ayer** la cambian de un toque (para quien apunta al día siguiente). Si una marca triplica la mejor del club en ese entreno (en tiempo, si baja de un tercio del mejor) o pasa de 2000 reps, 200 rondas, 50.000 metros o 400 kg, la app pregunta «¿Seguro?» por si sobra una cifra, y se guarda con **Guardar igualmente**. Los puntos de rendimiento se redondean al entero más cercano (17,5 son 18). Una marca de un entreno que ya no existe no puntúa, y «Entrenos esta semana», en Hoy, cuenta los mismos entrenos que la clasificación (sin marcas a cero, repetidas ni de entrenos borrados). Los puntos se recalculan en vivo, así que cuando alguien mejora la referencia, la clasificación se ajusta sola. Periodos: semana, mes y temporada.
+
+En los entrenos **por kg** (subir a un máximo, un 1RM…) se apunta el peso más alto que moviste y, si quieres, las **reps con ese peso**: 180 kg × 2. Mandan los kilos y las reps solo desempatan: con los mismos kilos va delante quien hizo más reps (sin apuntarlas cuentan como 1), y eso decide también la mejor marca del club y el PR (180 × 3 después de 180 × 2 es PR). El rendimiento sale solo de los kilos.
+
+Si cambias el **«Se puntúa por»** de un entreno que ya tiene marcas, las de antes no se mezclan con las nuevas: se miden entre ellas (rendimiento, mejor marca y PR) y en la ficha del entreno salen aparte, debajo de la pizarra, como «Apuntadas cuando se puntuaba por…». Para que cuenten con el formato actual, edita la marca y ponla de nuevo: la hoja se abre vacía, con un aviso de cómo se apuntó.
+
+## Quién puede qué
+
+La administran **dos, de serie**: quien montó el club y un segundo admin. Quien lo montó tiene **un nivel más**: a él nadie le quita la admin ni le borra, y es el único que puede quitársela al segundo o borrarle (si se la quita, se la puede devolver con la misma casilla). Cualquier admin puede nombrar a más desde Perfil → Editar de cada atleta («Puede administrar el club»), y a esos se la puede quitar cualquier admin. El reparto es este:
+
+| | Cualquiera | Admin |
+|---|---|---|
+| Crearse su atleta, apuntar, editar y borrar **sus** marcas, poner sus Rx | ✔ | ✔ |
+| Cambiar **su** nombre, disco y PIN | ✔ | ✔ |
+| Crear entrenos y editar o borrar **los suyos** | ✔ | ✔ |
+| Editar o borrar a **otro** atleta | ✘ | ✔ |
+| Editar o borrar marcas de **otro** | ✘ | ✔ |
+| Editar o borrar entrenos de **otro** | ✘ | ✔ |
+| Nombrar administradores | ✘ | ✔ |
+| Quitar la admin al segundo admin de serie o borrarle | ✘ | Solo quien montó el club |
+| Quitar la admin a quien montó el club o borrarle | ✘ | ✘ (nadie) |
+| Cambiar o quitar el PIN de otro | ✘ | ✘ (ni el admin) |
+| Importar una copia (cambia los datos de todos) | ✘ | ✔ |
+
+Al apuntar una marca, quien no es admin solo puede hacerlo a su nombre: el selector de atleta queda fijado en él.
+
+Si te equivocas de día o de resultado, **una marca se edita** (fecha, resultado, Rx, notas e incluso el entreno) **o se borra** con el lápiz y la papelera que salen donde se ve: en la ficha del entreno (Tus marcas y la pizarra) y en los Últimos tiempos de Hoy. El entreno del día también se edita o se quita desde la tarjeta "WOD de hoy".
+
+Dos reglas más para que el club no se rompa: **el primero que se da de alta en un club vacío queda como administrador** (si no, nadie podría serlo nunca), y **no se puede borrar al último administrador**. Al borrar un atleta o un entreno propio se avisa de cuántas marcas se van con él y se borran también, para no dejar marcas fantasma puntuando.
+
+### PIN
+
+Como la app no tiene contraseñas, cualquiera podría ponerse el nombre de otro en "¿Quién eres?". Para evitarlo, cada uno puede ponerse un **PIN** de 4 a 8 números en **Perfil → Editar**. Con PIN puesto, para usar ese atleta hay que escribirlo (sale un 🔒 junto al nombre). **Al admin le conviene tenerlo**, porque es el único cerrojo entre un atleta normal y el mando del club.
+
+El PIN solo lo pone y lo quita su dueño: ni el admin puede tocarlo. Se guarda derivado con PBKDF2 (210.000 vueltas y sal propia), nunca en claro, y no sale en las copias exportadas. Aun así son cuatro números y su huella viaja con los datos del club: **no lo trates como una contraseña de verdad**, trátalo como el candado de la taquilla.
+
+Aviso honesto: esto ordena la convivencia dentro de la app, pero **no es un candado**. Todos compartís el mismo código de acceso a la nube, así que quien sepa hacerlo puede editar los datos directamente en GitHub. Para impedirlo de verdad haría falta un servidor, que es justo lo que este montaje evita.
+
+## Pruebas oficiales
+
+**Entrenos → Pruebas** tiene las pruebas de competición, de momento la **DEKA FIT** (Spartan): diez zonas funcionales y, antes de cada una, 500 m corriendo, 5 km en total. Zonas: 30 reverse lunges con RAM, 500 m de remo, 20 box jump overs, 25 med ball sit-up throws, 500 m de ski, 100 m de farmers carry, 25 cal de air bike, 20 dead ball overs, 100 m de sled push/pull y 20 burpees con RAM, con las cargas oficiales ♀/♂ en la ficha. Se puntúa por tiempo y en el ranking suma **+30** (un Hero, +10). Como el resto, tiene su pizarra, su mapa de músculos y PR cuando la vuelvas a hacer más rápido.
+
+Las fechas de las pruebas del club salen en **Hoy → Próximos**, y el día de la prueba como WOD de hoy: la DEKA FIT de **Barcelona, el domingo 27 de septiembre de 2026**. Para añadir otra prueba o fecha: `data/pruebas.json` (campo `eventos`). No entran en los entrenos sugeridos.
+
+## Crear entrenos
+
+Un entreno nuestro se monta **eligiendo los movimientos de la lista**, para que todos escribamos lo mismo y la app sepa qué se hace en cada uno:
+
+- **Formato** (For time, For quality, AMRAP, EMOM, Tabata, intervalos, fuerza, otro) y por qué se puntúa: tiempo, rondas + reps, reps, kg o **metros** (un AMRAP de sled a ver quién hace más metros). **For quality** es para los entrenos sin crono ni marca en los que todos hacen lo mismo (accesorios, técnica): no lleva cronómetro ni se puntúa por nada, cada uno apunta que lo ha hecho.
+- **Rondas o esquema de reps**, en los formatos que lo llevan: un número son rondas (`5` → "5 rounds for time of:") y varios separados por guiones son un esquema (`21-15-9` → "21-15-9 reps for time of:"). Hay chips para los habituales (3, 5, 21-15-9, 15-12-9, 10→1; en fuerza 5x5, 5x3…). Fuera de fuerza solo valen números de 1 a 999 separados por guiones: `5x5` o `21-0-9` dan error (el `5x5` es de fuerza y, si cambias a otro formato, se vacía).
+- **Movimientos**, una fila por cada uno: la cantidad a la izquierda, el movimiento en medio y la carga Rx a la derecha si la hay. La cantidad lleva su unidad al lado: toca «reps» para cambiarla a **metros**, **calorías**, **segundos** o **minutos**, o a **máx** cuando no hay número porque cada uno hace todas las que pueda (sale «Max Pull-ups»; con **máx calorías**, «Max cal Row»). Cada movimiento trae la suya (Run, Row, Ski, Swim, los carries, el sled, el handstand walk y el bear crawl en metros; la bici en calorías; plank, L-sit, wall sit y handstand hold en segundos) y, si la cambias a mano, se queda la que elegiste. Al tocar el movimiento sale la lista entera por grupos y **se filtra según escribes** ("thr" → Thruster, Dumbbell thruster). Enter elige el primero. Si escribes el nombre entero ("pull-up") se enlaza solo, y si algo no está en la lista se puede **usar tal cual** (y avisar para añadirlo al catálogo). Si tecleas la unidad con el número («400 m», «1,5 km», «máx cal»), al salir de la casilla pasa al selector (`1,5 km` → `1500` con «m») y cuenta como elegida a mano; si después eliges otra en el selector, manda la que eliges. Una fila con cantidad, carga o máx y sin movimiento no se guarda («A la fila 3 le falta el movimiento.»); las filas del todo vacías se ignoran. La cantidad es un número mayor que cero (10, 1,5), un rango (10-15), un esquema (21-15-9) o ♀/♂ (15/12); cualquier otra cosa («15 kg», «5k», «abc», «0») no se guarda y dice en qué fila está (la carga va en su casilla, a la derecha).
+- **Notas** opcionales (descansos, cómo repartir en pareja…).
+- **Así quedará**: la vista previa del texto que se genera, al estilo de los héroes, con plurales ("10 Thrusters 43/30 kg") y la unidad delante del movimiento ("400 m Run", "50 m Farmers carry 2×24 kg", "20 cal Bike", "30 s Plank"; la unidad también sale en los rangos, "3-5 m Run"). Solo un «1» exacto va en singular («1 Pull-up», pero «1-3 Pull-ups»).
+- **Máximos**: un EMOM, un AMRAP, un Tabata o unos intervalos con filas de máximo pasan solos a puntuarse por **reps** totales (lo avisa; se puede cambiar, y lo que elijas después a mano se respeta: solo se vuelve a mirar cuando añades, quitas o cambias un máximo, o cambias de formato). Cuenta lo que se ve: también el movimiento escrito entero sin elegirlo de la lista, la unidad tecleada («máx cal») y el texto escrito a mano. Al quitar el último máximo, si «Se puntúa por» seguía en lo que había puesto la app, vuelve a lo del formato («Sin máximos, se puntúa por rondas + reps»). Al apuntar, cada uno suma las reps de todas las rondas, y las calorías cuentan como reps. Si todos los máximos son de distancia (Run, Row, Ski, los carries, el sled… en «máx»), se puntúa por **metros**. Así, para salir a correr: a distancia fija, un For time con «5000 m Run» (cada uno apunta su tiempo); a tiempo fijo, un AMRAP de 30 min con «Max meters Run» (cada uno apunta sus metros).
+
+Quien prefiera puede **escribirlo a mano** (el cuadro viene relleno con lo construido y, mientras no lo toques, se rehace con lo que cambies en las filas, también al editar un entreno de bloques; si lo guardas sin tocarlo se guarda como bloques), y los entrenos antiguos escritos a mano se abren en ese modo. Un texto con solo la cabecera («For time:») no se guarda. Al pulsar "Mejor elegir los movimientos de la lista" se convierten en filas en lo que se pueda ("30 Push Ups" → 30 × Push-up, "1000m run" → 1000 m de Run; las líneas "Rx …" se suman a las notas) y la cabecera aporta lo suyo si el campo estaba vacío: «21-15-9 reps for time of:» → esquema `21-15-9`, «5 rounds for time of:» → `5`, «5x5:» en fuerza → `5x5`, «AMRAP 20 min:» → 20 minutos.
+
+Los entrenos de antes en los que el sled o el farmers carry se apuntaron solo con el número ("15 sled") se abren al editarlos con sus metros, y los planks con sus segundos; lo guardado no cambia hasta que alguien los edita y guarda.
+
+Los entrenos nuestros los edita quien los creó **o quien administra el club**, da igual quién los metiera. Si al editar uno cambias por qué se puntúa (o el formato) y ya tiene marcas apuntadas de otro tipo, al guardar avisa («Hay 2 marcas apuntadas por rondas + reps. Si lo cambias a tiempo, se quedan aparte en la pizarra hasta que cada uno corrija la suya.») y ofrece **Guardar igualmente**. La fecha de «Programar para» no puede ser anterior al año 2000.
+
+## Movimientos y Rx de cada uno
+
+**Perfil → Mis Rx** tiene el catálogo de movimientos (155, sacados de los propios entrenos, del Open y los Games, de Hyrox y del trabajo de kettlebell y **con el nombre en inglés**, como se dicen en el box) agrupados en Barbell, Dumbbell & kettlebell, Ball, sandbag & vest, Box, Gymnastics, Cardio y Other. Cada uno apunta lo suyo: los kilos con los que hace cada levantamiento, la altura de cajón, si un gimnástico lo tiene Rx, Scaled o Aún no, y una nota libre en los de cardio.
+
+Como ya son muchos, arriba de la lista hay un **buscador** que filtra según escribes, también por abreviaturas (hspu, t2b, c2b, kb swing, g2oh…); las mismas abreviaturas valen al montar un entreno.
+
+En la ficha de cada entreno, la sección **Tus Rx aquí** enseña tus cargas en los movimientos de ese WOD (los elegidos de la lista si se montó por bloques; adivinados en el texto si está escrito a mano), para saber de un vistazo con qué peso vas y si te sale Rx.
+
+**Al porcentaje**: arriba de Mis Rx se elige a qué porcentaje quieres ver las cargas (50, 60, 70, 80, 90 % u otro a mano) y debajo de cada movimiento con kilos aparece lo que te toca, redondeado a medio kilo (65 kg al 70 % → 45,5 kg). El porcentaje elegido se recuerda en ese móvil.
+
+## Músculos
+
+Cada movimiento del catálogo lleva sus **músculos principales y secundarios** (16 grupos: hombros, pecho, bíceps, tríceps, antebrazos, trapecio, espalda alta, lumbar, abdominales, oblicuos, glúteos, cuádriceps, isquios, aductores, gemelos, tibiales). Con eso:
+
+- En la ficha de cada entreno, **Músculos que trabaja** dibuja el cuerpo (de frente y de espaldas) con los grupos que toca: verde intenso los principales, apagado los que ayudan. Cada movimiento suma 1 a sus principales y 0,3 a los secundarios.
+- En **Perfil → Tus músculos**, lo tuyo según las marcas que has apuntado: **Equilibrio** (reparto del trabajo por grupos en la semana, 30 días, 90 días o todo, con lo que no has tocado en ese periodo) y **Fatiga** (días desde la última marca en que cada músculo fue principal: hoy o ayer fatigado, hasta tres días en recuperación, después listo).
+- Tocar un músculo enseña qué movimientos lo trabajan (en ese entreno o en lo que has hecho) y otros del catálogo que lo tienen de principal.
+
+El dibujo del cuerpo viene de [react-native-body-highlighter](https://github.com/HichamELBSI/react-native-body-highlighter) (MIT, © 2022 ELABBASSI Hicham; licencia en `data/cuerpo.LICENSE`), convertido a `data/cuerpo.json`.
+
+## Entrenos sugeridos
+
+**Perfil → Entrenos sugeridos** propone qué hacer hoy según lo que has apuntado y el tiempo que tienes (un deslizador de **5 a 25 minutos**, que se recuerda):
+
+- **Cómo estás**: el cuerpo con lo **fatigado** (principal en una marca de hoy o ayer), lo que está **recuperando** (hasta tres días) y lo que **toca**: frescos y con falta de trabajo en los últimos 30 días, comparando tu reparto con el típico de los Héroes y las Girls. Si tienes medio cuerpo fatigado, lo avisa.
+- **A tu medida**: un AMRAP, un for time y un EMOM (este desde 6 min) montados con movimientos de siempre para esa duración, cada uno con movimientos distintos, eligiendo lo que tienes fresco y sin tocar lo fatigado. Las reps salen del ritmo de un atleta medio y de la carga Rx (43/30 kg el thruster, 24/16 kg la kettlebell…); en los for time cortos usa esquemas tipo 21-15-9. No propone lo que tienes como «Aún no» en Mis Rx, ni muscle-ups si no los tienes como Rx. **Usar este entreno** abre el formulario relleno y programado para hoy, para retocarlo y guardarlo. **Otras ideas** baraja otras propuestas.
+- **Del catálogo**: Héroes, Girls y los vuestros que duran más o menos ese tiempo, ordenados por lo bien que le vienen a tu estado; lo que has hecho esta semana no sale, y los que piden algo que tienes como «Aún no» bajan y lo avisan.
+
+La duración de los entrenos del catálogo es fija en los AMRAP, EMOM y Tabata; en los for time es **lo que tarda el club** (la mediana de las marcas terminadas) y, si nadie lo ha hecho, una **estimación** a partir de la prescripción (reps, distancias, cargas y descansos al ritmo de un atleta medio: Fran ≈ 5 min, Helen ≈ 11, DT ≈ 14, Angie ≈ 22, Murph ≈ 57). Los de pareja y los de fuerza no se sugieren.
+
+## Cronómetro
+
+For time (con time cap opcional y vueltas), AMRAP (con contador de rondas), EMOM y Tabata, con cuenta atrás de preparación, pitidos (3-2-1, cambios de intervalo, final) y bloqueo de pantalla mientras corre. Si se abre desde un entreno queda preconfigurado y, al terminar, el resultado se apunta con un toque.
+
+## Datos
+
+- Los Hero WODs vienen del PDF oficial de CrossFit (`crossfit.com/heroes`, edición 20260520) y de sus fichas en `crossfit.com/benchmark/…`; cada uno incluye prescripción, cargas ♀/♂ (en lb y kg), fecha de publicación y a quién honra.
+- Copia de seguridad: **Perfil → Exportar copia** genera un JSON con todo; **Importar copia** lo fusiona con lo que haya.
+
+## Desarrollo
+
+| Archivo | Rol |
+|---|---|
+| `index.html` | La app completa, generada por `build.js` |
+| `version.json` | La versión publicada, generada por `build.js`. La app la mira al abrirse y al volver a ella: si hay una más nueva, se recarga sola (o avisa con un botón si estás a medias), para no quedarse con la copia en caché |
+| `src/index.html`, `src/app.css`, `src/app.js` | Fuente |
+| `data/heroes.json`, `data/girls.json`, `data/pruebas.json`, `data/movimientos.json`, `data/cuerpo.json` | Catálogos incrustados en el build (movimientos con sus músculos; cuerpo con los paths SVG) |
+| `test/sync.test.js` | Pruebas de la fusión y, con `GH_TOKEN`, viaje de ida y vuelta real contra el repo privado `llorones-data` |
+| `test/puntos`, `permisos`, `entrenos`, `marcas`, `duplicados`, `pruebas`, `musculos`, `sugeridos`, `actualizar`, `crono`, `reloj`, `calidad`, `auditoria-entrenos`, `auditoria-marcas`, `pesos`, `reglas.test.js` | Pruebas de uso real en Chrome sin cabeza (`drive.js`): puntuación, permisos y PIN, constructor de entrenos y Mis Rx al %, for quality y unidades (metros, calorías, segundos, máx), cronómetro y reloj a pantalla completa, los casos de la auditoría de octubre de 2026 (formulario de entrenos; marcas, pizarras y puntos), las marcas por kg con reps y las reglas de la v1.11.6 (Hoy / Ayer, escalado frente a Rx, semana activa, cantidades y marcas raras). Necesitan la app servida en `http://127.0.0.1:8765` (`python -m http.server 8765`); si ese puerto está ocupado, sírvela en otro y pásalo con `APP_URL=http://127.0.0.1:<puerto>/dist/index.html` |
+
+```bash
+node build.js && node test/sync.test.js
+```
+
+Al cambiar algo: editar `src/`, subir `APP_VERSION`, ejecutar el build y subir a `main` **`index.html` y `version.json` juntos**. Pages publica en un minuto y los móviles se ponen al día solos al abrir la app. El repo `llorones-data` solo lo toca la app.
