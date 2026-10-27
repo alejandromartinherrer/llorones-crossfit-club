@@ -1,0 +1,8 @@
+gh_token.txt
+shots/
+dist/
+node_modules/
+# Documentos: viven en docs/ del repo privado de datos, nunca aqui (27/10/2026)
+CLAUDE.md
+HANDOFF.md
+CHANGELOG.md
