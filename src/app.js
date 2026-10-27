@@ -15,7 +15,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-data', branch: 'main', path: 'data/sync.json' };
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.13.1';
 /* Quien montó el club manda desde el principio y tiene un nivel más:
    nadie le quita la admin ni le borra. Un segundo admin lo administra con él (v1.11.7): es admin
    de serie y solo quien montó el club puede quitársela (queda `admin: false` en su
@@ -1298,6 +1298,9 @@ timer.full = localStorage.getItem(LS_PREFIX + 'full') !== 'off';
    no se dice otra cosa), en lugar de los pitidos, para que el final de la canción caiga justo al acabarse el tiempo.
    Solo donde hay final fijo: AMRAP, EMOM, Tabata y For time con cap. El audio no sale del móvil (IndexedDB): ni a la
    nube ni a la web, que es pública. */
+/* En iPhone y iPad, accept="audio/*" se lee como si fuera vídeo y deja los mp3 en gris al elegir (fallos 34442 y
+   242110 de WebKit): ahí no se filtra, y lo que no sea audio lo rechaza el descodificador con su aviso. */
+const ES_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const CANCION_MAX_S = 33;              // de lo descodificado se guarda el principio: lo más que puede sonar (30 s) y la cola
 const cancion = {
   nombre: localStorage.getItem(LS_PREFIX + 'cancion-nombre') || '',
@@ -1390,9 +1393,10 @@ async function cancionQuita() {
 /* Probar: suena como al final del crono, con la cuenta atrás en el botón, para ver si la última palabra cae en el cero. */
 async function cancionPrueba() {
   if (cancion.prueba) { cancion.prueba(); return; }              // otro toque la para
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();                 // en el mismo toque: en iPhone, tras un await ya no vale
   let buf;
   try { buf = await cancionBuffer(); } catch (e) { toast('No se puede leer el audio guardado: elígelo otra vez', true); return; }
-  if (actx.state === 'suspended') await actx.resume();
   const src = actx.createBufferSource(), g = actx.createGain();
   src.buffer = buf; src.connect(g); g.connect(actx.destination);
   const fin = actx.currentTime + cancion.seg;
@@ -1410,9 +1414,10 @@ function cancionAjustesHtml() {
         '<label class="check"><input type="checkbox" data-action="toggle-cancion"' + (cancion.on ? ' checked' : '') + '> Que suene al final del crono</label>' +
         '<div class="field"><label for="cancion-seg">Empieza antes del final (segundos)</label><input type="number" id="cancion-seg" data-action="cancion-seg" min="1" max="30" step="1" inputmode="numeric" value="' + cancion.seg + '"></div>' +
         '<div class="btn-row"><button class="btn" data-action="cancion-probar">Probar</button><label class="btn ghost" for="cancion-file">Cambiar</label><button class="btn ghost" data-action="cancion-quitar">Quitar</button></div>'
-      : '<p class="small muted">Elige un audio de este móvil y sonará en los últimos segundos del crono, en vez de los pitidos, para que acabe justo con el tiempo. Se queda en este móvil: no se sube a la nube.</p>' +
+      : '<p class="small muted">Elige un audio de este móvil y sonará en los últimos segundos del crono, en vez de los pitidos, para que acabe justo con el tiempo. Se queda en este móvil: no se sube a la nube.' +
+        (ES_IOS ? ' En iPhone tiene que estar en la app Archivos: si te lo han mandado por WhatsApp, antes «Guardar en Archivos».' : '') + '</p>' +
         '<div class="btn-row"><label class="btn" for="cancion-file">Elegir audio</label></div>') +
-    '<input type="file" id="cancion-file" accept="audio/*" data-action="cancion-elegir" hidden>' +
+    '<input type="file" id="cancion-file"' + (ES_IOS ? '' : ' accept="audio/*"') + ' data-action="cancion-elegir" hidden>' +
     '<p class="faint small">Suena en AMRAP, EMOM, Tabata y For time con time cap: donde el final tiene hora fija.</p></div>';
 }
 

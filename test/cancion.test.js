@@ -1,4 +1,4 @@
-/* La canción del final del crono (v1.13.0): se elige un audio del móvil con el selector de archivos de verdad,
+/* La canción del final del crono (v1.13.0; en iPhone, v1.13.1): se elige un audio del móvil con el selector de archivos de verdad,
    se guarda solo en ese móvil y suena en los últimos segundos (7 por defecto) en vez de los pitidos, entrando
    por donde toca para que su final caiga en el cero. Pausa, Terminar, «Que suene», «Probar» y «Quitar».
    Uso: node test/cancion.test.js   (con la app servida en http://127.0.0.1:8765) */
@@ -57,6 +57,7 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   await p.click('Perfil', '.tab'); await sleep(600);
   let t = await p.text();
   check(/Canción del final/i.test(t) && /Elegir audio/i.test(t) && /no se sube a la nube/i.test(t), 'Perfil → Ajustes ofrece «Canción del final», que se queda en el móvil');
+  check((await p.eval("return document.querySelector('#cancion-file').getAttribute('accept')")) === 'audio/*' && !/app Archivos/.test(t), 'fuera del iPhone el selector enseña solo audios, sin el aviso de Archivos');
   await elige(p, malo); await sleep(1500);
   check(/no es un audio que este móvil sepa leer/.test(await p.all()), 'un archivo que no es audio se rechaza con un aviso claro');
   check(!(await p.eval("return localStorage.getItem('llorones:cancion-nombre')")), 'y no se guarda nada');
@@ -140,6 +141,26 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   check(s.arr.length === 1 && s.arr[0].rem <= 5 && s.arr[0].rem > 4.8 && (await p.eval('return timer.endReason')) === 'cap', 'con cap suena en los últimos 5 s y acaba en el cap');
   await sleep(3000);
 
+  console.log('\n== iPHONE: SE PUEDE ELEGIR EL MP3 Y «PROBAR» DESPIERTA EL AUDIO EN EL TOQUE');
+  await p.send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1', platform: 'iPhone' });
+  await p.go(APP); await sleep(2500); await p.eval('closeSheet(); return 1;');
+  await p.eval(ESPIA);
+  await p.click('Perfil', '.tab'); await sleep(500);
+  check((await p.eval('return ES_IOS')) && !(await p.eval("return document.querySelector('#cancion-file').hasAttribute('accept')")), 'en iPhone el selector no filtra: accept="audio/*" deja los mp3 en gris');
+  check((await p.eval('return cancion.buf')) === null && !(await p.eval('return actx')), 'la canción sigue guardada, sin descodificar y sin audio despierto');
+  await p.eval(`window.__orden = [];
+    var AC = window.AudioContext;
+    window.AudioContext = function () { window.__orden.push('crea'); return new AC(); };
+    var pr = AC.prototype.resume; AC.prototype.resume = function () { window.__orden.push('despierta'); return pr.apply(this, arguments); };
+    var pg = IDBObjectStore.prototype.get; IDBObjectStore.prototype.get = function () { window.__orden.push('lee'); return pg.apply(this, arguments); };
+    window.__arr = []; return 1;`);
+  await p.click('Probar'); await sleep(900);
+  const orden = JSON.parse(await p.eval('return JSON.stringify(window.__orden)'));
+  check(orden[0] === 'crea' && orden.indexOf('lee') > 0, '«Probar» crea el audio en el mismo toque, antes de leer la canción guardada: ' + orden.join(' → '));
+  s = await espia(p);
+  check(s.arr.length === 1 && s.arr[0].off === 0 && s.ctx === 'running', 'y suena desde el principio (contexto: ' + s.ctx + ')');
+  await p.click('Parar'); await sleep(600);
+
   console.log('\n== PROBAR Y QUITAR');
   await p.click('Perfil', '.tab'); await sleep(500);
   await p.eval('window.__arr = []; return 1;');
@@ -151,6 +172,7 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   await p.click('Quitar'); await sleep(1200);
   t = await p.text();
   check(/Elegir audio/i.test(t) && !/se-acabo/i.test(t) && !(await p.eval("return localStorage.getItem('llorones:cancion-nombre')")), '«Quitar» la borra del móvil');
+  check(/tiene que estar en la app Archivos/.test(t), 'en iPhone, sin canción, dice que el audio tiene que estar en Archivos');
   check(!(await p.eval("return cancionDb('readonly', function (s) { return s.get('final'); })")), 'también de IndexedDB');
   await p.click('Crono', '.tab'); await sleep(500);
   check(!/suena en los últimos/.test(await p.text()), 'y el crono ya no la anuncia');
