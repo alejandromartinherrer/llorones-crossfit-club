@@ -1,4 +1,4 @@
-/* La canción del final del crono (v1.13.0; en iPhone, v1.13.1): se elige un audio del móvil con el selector de archivos de verdad,
+/* La canción del final del crono (v1.13.0; en iPhone, v1.13.1; con música de fondo, v1.13.2): se elige un audio del móvil con el selector de archivos de verdad,
    se guarda solo en ese móvil y suena en los últimos segundos (7 por defecto) en vez de los pitidos, entrando
    por donde toca para que su final caiga en el cero. Pausa, Terminar, «Que suene», «Probar» y «Quitar».
    Uso: node test/cancion.test.js   (con la app servida en http://127.0.0.1:8765) */
@@ -33,6 +33,14 @@ const ESPIA = `window.__arr = []; window.__osc = [];
   AudioContext.prototype.createOscillator = function () { window.__osc.push(timer.status === 'running' ? +(timerTotal() - elapsed()).toFixed(2) : timer.status); return po.apply(this, arguments); };
   return 1;`;
 const espia = (p) => p.eval("return JSON.stringify({ arr: window.__arr, osc: window.__osc, song: !!timer.song, status: timer.status, rem: timer.status === 'running' ? timerTotal() - elapsed() : null, ctx: actx && actx.state })").then(JSON.parse);
+/* La sesión de audio de Safari (navigator.audioSession), de mentira: apunta cada cambio de tipo con lo que quedaba
+   de crono. Chrome no la tiene. */
+const SESION = `window.__ses = []; var tipo = 'auto';
+  Object.defineProperty(navigator, 'audioSession', { configurable: true, value: {
+    get type() { return tipo; },
+    set type(v) { tipo = v; window.__ses.push(v + '@' + (timer.status === 'running' ? (timerTotal() - elapsed()).toFixed(1) : timer.status)); } } });
+  return 1;`;
+const ses = (p) => p.eval('return JSON.stringify(window.__ses)').then(JSON.parse);
 /* Un crono corto a mano: AMRAP o For time con cap, en minutos con decimales, sin cuenta atrás ni pantalla completa. */
 async function crono(p, modo, min) {
   await p.click('Crono', '.tab'); await sleep(600);
@@ -58,6 +66,7 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   let t = await p.text();
   check(/Canción del final/i.test(t) && /Elegir audio/i.test(t) && /no se sube a la nube/i.test(t), 'Perfil → Ajustes ofrece «Canción del final», que se queda en el móvil');
   check((await p.eval("return document.querySelector('#cancion-file').getAttribute('accept')")) === 'audio/*' && !/app Archivos/.test(t), 'fuera del iPhone el selector enseña solo audios, sin el aviso de Archivos');
+  check(!(await p.eval('return !!navigator.audioSession')) && !/darle al play/.test(t), 'sin sesión de audio (Chrome) no avisa de que para la música');
   await elige(p, malo); await sleep(1500);
   check(/no es un audio que este móvil sepa leer/.test(await p.all()), 'un archivo que no es audio se rechaza con un aviso claro');
   check(!(await p.eval("return localStorage.getItem('llorones:cancion-nombre')")), 'y no se guarda nada');
@@ -144,8 +153,9 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   console.log('\n== iPHONE: SE PUEDE ELEGIR EL MP3 Y «PROBAR» DESPIERTA EL AUDIO EN EL TOQUE');
   await p.send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1', platform: 'iPhone' });
   await p.go(APP); await sleep(2500); await p.eval('closeSheet(); return 1;');
-  await p.eval(ESPIA);
+  await p.eval(ESPIA); await p.eval(SESION);
   await p.click('Perfil', '.tab'); await sleep(500);
+  check(/se para para que se oiga, y luego hay que volver a darle al play/.test(await p.text()), 'con sesión de audio (Safari) avisa de que la música de fondo se para y hay que volver a darle al play');
   check((await p.eval('return ES_IOS')) && !(await p.eval("return document.querySelector('#cancion-file').hasAttribute('accept')")), 'en iPhone el selector no filtra: accept="audio/*" deja los mp3 en gris');
   check((await p.eval('return cancion.buf')) === null && !(await p.eval('return actx')), 'la canción sigue guardada, sin descodificar y sin audio despierto');
   await p.eval(`window.__orden = [];
@@ -159,7 +169,31 @@ const hasta = async (p, cond, ms) => { for (let t = 0; t < ms; t += 50) { if (aw
   check(orden[0] === 'crea' && orden.indexOf('lee') > 0, '«Probar» crea el audio en el mismo toque, antes de leer la canción guardada: ' + orden.join(' → '));
   s = await espia(p);
   check(s.arr.length === 1 && s.arr[0].off === 0 && s.ctx === 'running', 'y suena desde el principio (contexto: ' + s.ctx + ')');
+  check(JSON.stringify(await ses(p)) === '["playback@idle"]', '«Probar» también para la música de fondo mientras suena');
   await p.click('Parar'); await sleep(600);
+  check(JSON.stringify(await ses(p)) === '["playback@idle","auto@idle"]', 'y al pararla suelta el audio');
+
+  console.log('\n== iPHONE CON MÚSICA PUESTA: SE PARA MIENTRAS SUENA LA CANCIÓN Y LUEGO SE SUELTA');
+  await p.eval('window.__ses = []; return 1;');
+  await crono(p, 'amrap', 0.2);
+  await sleep(4000);
+  check((await ses(p)).length === 0 && (await p.eval('return navigator.audioSession.type')) === 'auto', 'mientras no toca la canción el audio se mezcla: la música de fondo sigue');
+  await hasta(p, 'timer.song', 9000);
+  let u = await ses(p);
+  check(u.length === 1 && /^playback@[45]\./.test(u[0]), 'al entrar la canción pide el audio para ella sola («playback») y el iPhone para la otra música: ' + u.join(' → '));
+  await sleep(800);
+  await p.click('Pausa'); await hasta(p, "navigator.audioSession.type === 'auto'", 1500);
+  u = await ses(p);
+  check(u.length === 2 && u[1] === 'auto@paused', 'al pausar se corta y lo suelta');
+  await sleep(500);
+  await p.click('Reanudar'); await hasta(p, "navigator.audioSession.type === 'playback'", 1500);
+  u = await ses(p);
+  check(u.length === 3 && /^playback@[0-4]\./.test(u[2]), 'al reanudar lo vuelve a pedir');
+  await hasta(p, "timer.status === 'done'", 8000);
+  check((await p.eval('return navigator.audioSession.type')) === 'playback' && (await p.eval('return !!timer.song')), 'al acabarse el tiempo lo sigue teniendo mientras suena la cola');
+  await hasta(p, "navigator.audioSession.type === 'auto'", 4500);
+  u = await ses(p);
+  check(u.length === 4 && u[3] === 'auto@done' && !(await p.eval('return !!timer.song')), 'y al apagarse la cola lo suelta: ' + u.join(' → '));
 
   console.log('\n== PROBAR Y QUITAR');
   await p.click('Perfil', '.tab'); await sleep(500);
