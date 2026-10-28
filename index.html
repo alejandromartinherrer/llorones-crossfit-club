@@ -972,7 +972,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-data', branch: 'main', path: 'data/sync.json' };
-const APP_VERSION = '1.13.1';
+const APP_VERSION = '1.13.2';
 /* Quien montó el club manda desde el principio y tiene un nivel más:
    nadie le quita la admin ni le borra. Un segundo admin lo administra con él (v1.11.7): es admin
    de serie y solo quien montó el club puede quitársela (queda `admin: false` en su
@@ -2301,6 +2301,15 @@ async function cancionBuffer() {
   return cancion.buf;
 }
 const cancionToca = () => cancion.on && !!cancion.nombre && timerTotal() > 0;
+/* En iPhone el audio de la web se mezcla con el de otras apps, y con Spotify puesto la canción no se oye. Mientras
+   suena, la página pide el audio para ella sola (navigator.audioSession «playback», Safari 16.4+) y el iPhone para
+   la otra música; al acabar lo suelta, para que los pitidos vuelvan a mezclarse. Spotify no vuelve solo: Safari
+   suelta el audio sin avisar a las otras apps, y hay que darle al play. Donde no existe (Android, escritorio), nada. */
+function audioSolo(si) {
+  const s = navigator.audioSession;
+  if (!s || (!si && (timer.song || cancion.prueba))) return;     // aún suena otra: se suelta cuando acabe esa
+  try { s.type = si ? 'playback' : 'auto'; } catch (e) { }
+}
 /* Arranca cuando quedan cancion.seg segundos. Si el tic llega tarde, o se reanuda a media canción, entra por donde
    toca para que el final siga cayendo en el cero. Suena una vez por crono (al pausar se corta y vuelve a entrar). */
 function cancionAlFinal(rem) {
@@ -2312,9 +2321,10 @@ function cancionAlFinal(rem) {
     if (actx.state === 'suspended') actx.resume();
     const src = actx.createBufferSource(), g = actx.createGain();
     src.buffer = cancion.buf; src.connect(g); g.connect(actx.destination);
-    src.onended = () => { if (timer.song && timer.song.src === src) timer.song = null; };
+    src.onended = () => { if (timer.song && timer.song.src === src) timer.song = null; audioSolo(false); };
     src.start(0, desde);
     timer.song = { src, g };
+    audioSolo(true);
   } catch (e) { timer.song = null; }
 }
 /* Al acabarse el tiempo se deja sonar un poco (la última palabra) y se baja; al pausar, terminar o reiniciar, se corta. */
@@ -2325,7 +2335,7 @@ function cancionPara(cola) {
     s.g.gain.setValueAtTime(1, t + cola); s.g.gain.linearRampToValueAtTime(0, t + cola + baja); s.src.stop(t + cola + baja + 0.05);
   } catch (e) { }
   if (!cola) timer.song = null;
-  else setTimeout(() => { if (timer.song === s) timer.song = null; }, (cola + 1.2) * 1000);   // por si el audio no avisa al acabar
+  else setTimeout(() => { if (timer.song === s) { timer.song = null; audioSolo(false); } }, (cola + 1.2) * 1000);   // por si el audio no avisa al acabar
 }
 async function cancionElige(input) {
   const f = input.files && input.files[0]; input.value = '';
@@ -2358,11 +2368,11 @@ async function cancionPrueba() {
   src.buffer = buf; src.connect(g); g.connect(actx.destination);
   const fin = actx.currentTime + cancion.seg;
   g.gain.setValueAtTime(1, fin + 1.5); g.gain.linearRampToValueAtTime(0, fin + 2.5);
-  src.start(0); src.stop(fin + 2.55);
+  src.start(0); src.stop(fin + 2.55); audioSolo(true);
   const pinta = (txt) => { const b = $('[data-action="cancion-probar"]'); if (b) b.textContent = txt; };
   const iv = setInterval(() => pinta('Parar · ' + Math.max(0, Math.ceil(fin - actx.currentTime))), 100);
   cancion.prueba = () => { try { src.stop(); } catch (e) { } };
-  src.onended = () => { clearInterval(iv); cancion.prueba = null; pinta('Probar'); };
+  src.onended = () => { clearInterval(iv); cancion.prueba = null; pinta('Probar'); audioSolo(false); };
 }
 function cancionAjustesHtml() {
   return '<div class="field"><span class="label">Canción del final</span>' +
@@ -2375,7 +2385,8 @@ function cancionAjustesHtml() {
         (ES_IOS ? ' En iPhone tiene que estar en la app Archivos: si te lo han mandado por WhatsApp, antes «Guardar en Archivos».' : '') + '</p>' +
         '<div class="btn-row"><label class="btn" for="cancion-file">Elegir audio</label></div>') +
     '<input type="file" id="cancion-file"' + (ES_IOS ? '' : ' accept="audio/*"') + ' data-action="cancion-elegir" hidden>' +
-    '<p class="faint small">Suena en AMRAP, EMOM, Tabata y For time con time cap: donde el final tiene hora fija.</p></div>';
+    '<p class="faint small">Suena en AMRAP, EMOM, Tabata y For time con time cap: donde el final tiene hora fija.' +
+    (navigator.audioSession ? ' Si tienes música puesta (Spotify…), se para para que se oiga, y luego hay que volver a darle al play.' : '') + '</p></div>';
 }
 
 function timerTotal() {
