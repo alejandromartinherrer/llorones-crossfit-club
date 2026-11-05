@@ -15,7 +15,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-data', branch: 'main', path: 'data/sync.json' };
-const APP_VERSION = '1.13.2';
+const APP_VERSION = '1.13.3';
 /* Quien montó el club manda desde el principio y tiene un nivel más:
    nadie le quita la admin ni le borra. Un segundo admin lo administra con él (v1.11.7): es admin
    de serie y solo quien montó el club puede quitársela (queda `admin: false` en su
@@ -1954,7 +1954,7 @@ const SPR = {
   'wall-ball': 2.8, 'med-ball-clean': 2.8, sandbag: 5, 'ball-slam': 2.2, 'plate-g2oh': 3,
   'pull-up': 2.5, 'strict-pull-up': 3.5, c2b: 3, 'l-pull-up': 4, 'burpee-pull-up': 6, 'muscle-up': 10, 'bar-muscle-up': 7, hspu: 4, 'strict-hspu': 6, 'parallette-hspu': 5,
   t2b: 3, k2e: 2.6, 'ring-dip': 3.5, 'push-up': 2.2, 'hr-push-up': 2.8, pistol: 3, 'double-under': 0.6, 'rope-climb': 30, ghd: 2.6, 'back-extension': 2.2, 'sit-up': 2.2,
-  'air-squat': 1.7, burpee: 4.5, 'burpee-over-db': 5, 'burpee-over-bar': 5, burroll: 6.5, 'ring-row': 2.2, 'jumping-pull-up': 2, 'strict-t2b': 3.5, 'strict-muscle-up': 10, 'wall-walk': 12, 'hollow-rock': 1, 'v-up': 2, 'hollow-tuck-up': 2.5, 'kipping-swing': 1.5,
+  'air-squat': 1.7, burpee: 4.5, 'burpee-over-db': 5, 'burpee-over-bar': 5, burroll: 6.5, 'bastard-burpee': 6, 'ring-row': 2.2, 'jumping-pull-up': 2, 'strict-t2b': 3.5, 'strict-muscle-up': 10, 'wall-walk': 12, 'hollow-rock': 1, 'v-up': 2, 'hollow-tuck-up': 2.5, 'kipping-swing': 1.5,
   'mountain-climber': 0.7, 'jumping-lunge': 1.6, 'jump-squat': 2, 'tuck-jump': 2.2, 'broad-jump': 3, 'single-under': 0.4, crossover: 1, 'weighted-pull-up': 3, 'chin-up': 2.2,
   'bar-dip': 2.4, pegboard: 40, 'hanging-knee-raise': 2, 'russian-twist': 1.2, 'pike-push-up': 2.4, 'shoulder-tap': 1, superman: 2, 'cossack-squat': 3, 'burpee-broad-jump': 5,
   'up-down': 2.5, 'triple-under': 3, 'forward-roll': 2.5, 'reverse-hyper': 2, 'box-jump': 3, 'box-jump-over': 3.2, 'box-step-up': 3, 'walking-lunge': 2, inchworm: 5, 'jumping-jack': 1,
@@ -2157,7 +2157,7 @@ const POOL_SUG = [
   { id: 'goblet-squat', mod: 'W', carga: '24/16 kg' }, { id: 'db-lunge', mod: 'W', carga: '2 × 15/10 kg' }, { id: 'db-push-press', mod: 'W', carga: '2 × 15/10 kg' },
   { id: 'db-clean', mod: 'W', carga: '2 × 15/10 kg' }, { id: 'kb-deadlift', mod: 'W', carga: '32/24 kg' }, { id: 'ball-slam', mod: 'W', carga: '9/6 kg' },
 ];
-const TOPE_REPS = { 'muscle-up': 7, 'bar-muscle-up': 10, 'rope-climb': 4, 'wall-walk': 5, hspu: 15, pistol: 20, 'devil-press': 12, 'clean-and-jerk': 12, deadlift: 15, 'power-clean': 15, 'hang-power-clean': 15, 'front-squat': 15, 'push-jerk': 15, 'power-snatch': 15, 'hang-power-snatch': 15, 'overhead-squat': 15, thruster: 21, 'push-press': 15, 'shoulder-to-overhead': 15, sdhp: 20, 'ring-dip': 20, 'double-under': 100, 'air-squat': 50, 'sit-up': 40, 'push-up': 30, 'hr-push-up': 25, burpee: 20, 'burpee-over-db': 20, 'burpee-over-bar': 20, 'db-burpee': 15, 'box-jump-over': 20, 'box-jump': 24, 'db-lunge': 24, 'kb-deadlift': 25 };
+const TOPE_REPS = { 'muscle-up': 7, 'bar-muscle-up': 10, 'rope-climb': 4, 'wall-walk': 5, hspu: 15, pistol: 20, 'devil-press': 12, 'clean-and-jerk': 12, deadlift: 15, 'power-clean': 15, 'hang-power-clean': 15, 'front-squat': 15, 'push-jerk': 15, 'power-snatch': 15, 'hang-power-snatch': 15, 'overhead-squat': 15, thruster: 21, 'push-press': 15, 'shoulder-to-overhead': 15, sdhp: 20, 'ring-dip': 20, 'double-under': 100, 'air-squat': 50, 'sit-up': 40, 'push-up': 30, 'hr-push-up': 25, burpee: 20, 'burpee-over-db': 20, 'burpee-over-bar': 20, 'bastard-burpee': 15, 'db-burpee': 15, 'box-jump-over': 20, 'box-jump': 24, 'db-lunge': 24, 'kb-deadlift': 25 };
 const MIN_REPS = { 'muscle-up': 2, 'bar-muscle-up': 3, 'rope-climb': 1, 'wall-walk': 2 };
 const REPS_BONITAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 25, 30, 35, 40, 45, 50, 60, 75, 100];
 const METROS_BONITOS = [100, 200, 300, 400, 500, 600, 800, 1000];
