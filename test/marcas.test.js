@@ -96,8 +96,32 @@ const marca = (p, id) => p.eval("return JSON.stringify(state.results.find(functi
   check((await q.sheetTitle()) === 'Editar marca' && (await q.eval("return document.querySelector('#f-athlete').disabled")), 'desde Tus marcas edita la suya, con el atleta fijado');
   await q.type('#f-rounds', '11'); await q.clickSel('[data-action="save-result"]'); await sleep(1000);
   check(await q.eval("var r = state.results.find(function(x){return x.id==='r3';}); return r.rounds === 11 && r.athleteId === 'colega'"), 'y se guarda a su nombre');
-  check(!(p.consoleErrors || []).length && !(q.consoleErrors || []).length, 'sin errores de consola' + ((p.consoleErrors || []).concat(q.consoleErrors || []).length ? ': ' + (p.consoleErrors || []).concat(q.consoleErrors || []).join(' | ') : ''));
-  await p.stop(); await q.stop();
+
+  console.log('\n== LAS MARCAS SALEN CON EL NOMBRE DE HOY DEL ENTRENO');
+  const s3 = {
+    athletes: siembra.athletes,
+    workouts: { w9: { id: 'w9', name: '11.14 - 01', type: 'amrap', scoreType: 'rounds', durationMin: 10, description: '10 burpees', scheduledDate: '', createdBy: ADMIN, createdAt: T, updatedAt: T } },
+    results: {
+      r4: { id: 'r4', athleteId: ADMIN, workoutId: 'w9', workoutName: '10.14 - 1', category: 'custom', scoreType: 'rounds', rounds: 5, reps: 0, date: hace(7), rx: true, createdAt: '2026-11-14T16:28:00.000Z', updatedAt: T },
+      r5: { id: 'r5', athleteId: ADMIN, workoutId: 'girl:cindy', workoutName: 'cindy vieja', category: 'girl', scoreType: 'rounds', rounds: 12, reps: 0, date: hace(6), rx: true, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: T },
+      r6: { id: 'r6', athleteId: ADMIN, workoutId: 'ya-no-esta', workoutName: 'Uno borrado', category: 'custom', scoreType: 'rounds', rounds: 3, reps: 0, date: hace(5), rx: true, createdAt: '2026-11-16T10:00:00.000Z', updatedAt: T },
+    },
+  };
+  const z = await movil('Jefe', 9933, s3, ADMIN);
+  await z.eval("go('home'); return 1;"); await sleep(500);
+  const feedTxt = await z.eval("return Array.prototype.map.call(document.querySelectorAll('.feed-li .what'), function (e) { return e.innerText; }).join(' | ')");
+  check(/· 11\.14 - 01/.test(feedTxt) && !/10\.14 - 1/.test(feedTxt), 'en Últimos tiempos, la marca de un entreno renombrado sale con el nombre nuevo (' + feedTxt + ')');
+  check(/· Cindy\b/.test(feedTxt) && !/cindy vieja/.test(feedTxt), 'la de una Girl, con el nombre de la Girl');
+  check(/· Uno borrado/.test(feedTxt), 'y la de un entreno que ya no existe, con el nombre que se guardó');
+  check(await z.eval("var b = document.querySelector('.feed-li [data-action=\"open-wod\"][data-id=\"w9\"]'); return !!b && /11\\.14 - 01/.test(b.getAttribute('aria-label'))"), 'también en la etiqueta del botón (lectores de pantalla)');
+  await z.eval("ACTIONS['delete-result']({dataset:{id:'r4'}}); return 1;"); await sleep(500);
+  check((await z.sheetTitle()) === 'Borrar resultado' && /de 11\.14 - 01\?/.test(await z.eval("return document.querySelector('#sheet-root').innerText")), 'al borrarla, la pregunta dice el nombre nuevo');
+  await z.eval('dismissSheet(); return 1;'); await sleep(300);
+  check(await z.eval("return state.results.some(function(x){return x.id==='r4';})"), 'y al cancelar no se borra');
+
+  const errores = (p.consoleErrors || []).concat(q.consoleErrors || [], z.consoleErrors || []);
+  check(!errores.length, 'sin errores de consola' + (errores.length ? ': ' + errores.join(' | ') : ''));
+  await p.stop(); await q.stop(); await z.stop();
 
   console.log('\n== RESULTADO:', fails.length ? 'FALLOS -> ' + fails.join(' | ') : 'TODO CORRECTO');
   process.exit(fails.length ? 1 : 0);

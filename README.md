@@ -117,7 +117,7 @@ Quien prefiera puede **escribirlo a mano** (el cuadro viene relleno con lo const
 
 Los entrenos de antes en los que el sled o el farmers carry se apuntaron solo con el número ("15 sled") se abren al editarlos con sus metros, y los planks con sus segundos; lo guardado no cambia hasta que alguien los edita y guarda.
 
-Los entrenos nuestros los edita quien los creó **o quien administra el club**, da igual quién los metiera. Si al editar uno cambias por qué se puntúa (o el formato) y ya tiene marcas apuntadas de otro tipo, al guardar avisa («Hay 2 marcas apuntadas por rondas + reps. Si lo cambias a tiempo, se quedan aparte en la pizarra hasta que cada uno corrija la suya.») y ofrece **Guardar igualmente**. La fecha de «Programar para» no puede ser anterior al año 2000.
+Los entrenos nuestros los edita quien los creó **o quien administra el club**, da igual quién los metiera. Si le cambias el nombre, las marcas ya apuntadas salen con el nuevo, también en los Últimos tiempos de Hoy. Si al editar uno cambias por qué se puntúa (o el formato) y ya tiene marcas apuntadas de otro tipo, al guardar avisa («Hay 2 marcas apuntadas por rondas + reps. Si lo cambias a tiempo, se quedan aparte en la pizarra hasta que cada uno corrija la suya.») y ofrece **Guardar igualmente**. La fecha de «Programar para» no puede ser anterior al año 2000.
 
 ## Movimientos y Rx de cada uno
 

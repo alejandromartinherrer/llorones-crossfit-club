@@ -15,7 +15,7 @@
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-data', branch: 'main', path: 'data/sync.json' };
-const APP_VERSION = '1.13.3';
+const APP_VERSION = '1.13.4';
 /* Quien montó el club manda desde el principio y tiene un nivel más:
    nadie le quita la admin ni le borra. Un segundo admin lo administra con él (v1.11.7): es admin
    de serie y solo quien montó el club puede quitársela (queda `admin: false` en su
@@ -516,6 +516,12 @@ function allWorkouts() {
   return builtinWorkouts().concat(custom);
 }
 function getWorkout(id) { return allWorkouts().find((w) => w.id === id) || null; }
+/* Cada marca guarda el nombre del entreno de cuando se apuntó (`workoutName`). Se enseña el de hoy, para
+   que al renombrar un entreno sus marcas no se queden con el viejo; la copia solo vale si el entreno ya no existe. */
+function nombreDeMarca(r) {
+  const w = state.workouts.find((x) => x.id === r.workoutId) || builtinWorkouts().find((x) => x.id === r.workoutId);
+  return (w && w.name) || r.workoutName || '';
+}
 function workoutMeta(w) {
   const bits = [TYPE_LABEL[w.type] || w.type];
   if (w.durationMin) bits.push(w.durationMin + ' min');
@@ -993,9 +999,9 @@ function viewHome() {
   html += '<section class="card"><div class="section-head"><h2 class="h-display h2">Últimos tiempos</h2>' + (feed.length ? '<button class="link" data-action="log-result">+ Apuntar</button>' : '') + '</div>';
   if (feed.length) {
     html += '<ul class="list" style="border:0">' + feed.map((r) => {
-      const a = athleteById(r.athleteId);
-      return '<li class="feed-li"><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + r.workoutName + ', ' + fmtScore(r)) + '">' + avatar(a) +
-        '<span><span class="what"><b>' + esc(a ? a.name : '?') + '</b> · ' + esc(r.workoutName) + '</span><br><span class="when">' + esc(relDate(r.date)) + (r.notes ? ' · ' + esc(r.notes) : '') + '</span></span>' +
+      const a = athleteById(r.athleteId), nombre = nombreDeMarca(r);
+      return '<li class="feed-li"><button class="feed-item row pressable" data-action="open-wod" data-id="' + esc(r.workoutId) + '" aria-label="' + esc((a ? a.name : '?') + ', ' + nombre + ', ' + fmtScore(r)) + '">' + avatar(a) +
+        '<span><span class="what"><b>' + esc(a ? a.name : '?') + '</b> · ' + esc(nombre) + '</span><br><span class="when">' + esc(relDate(r.date)) + (r.notes ? ' · ' + esc(r.notes) : '') + '</span></span>' +
         '<span class="right"><span class="score">' + esc(fmtScore(r)) + '</span><span>' + (esRepetida(r) ? badge('nocuenta', 'Repetida') : !marcaValida(r) ? badge('nocuenta', 'No cuenta') : (r.rx ? badge('rx', 'Rx') : '') + (isPR(r) ? ' ' + badge('pr', 'PR') : '')) + '</span></span></button>' + (puedoBorrarResultado(r) ? '<button class="icon-btn" data-action="edit-result" data-id="' + esc(r.id) + '" aria-label="Editar marca">' + icon('pen') + '</button>' : '') + '</li>';
     }).join('') + '</ul>';
   } else {
@@ -3110,7 +3116,7 @@ const ACTIONS = {
   'delete-result': async (el) => {
     const r = state.results.find((x) => x.id === el.dataset.id); if (!r) return;
     if (!puedoBorrarResultado(r)) { noPuedes('Solo puedes borrar tus marcas'); return; }
-    if (await confirmSheet('Borrar resultado', '¿Borrar ' + fmtScore(r) + ' de ' + r.workoutName + '?')) { await state.store.remove('results', r.id); dismissSheet(); toast('Resultado borrado'); render(); }
+    if (await confirmSheet('Borrar resultado', '¿Borrar ' + fmtScore(r) + ' de ' + nombreDeMarca(r) + '?')) { await state.store.remove('results', r.id); dismissSheet(); toast('Resultado borrado'); render(); }
     else dismissSheet();
   },
   'close-sheet': () => dismissSheet(),
@@ -3157,7 +3163,7 @@ const ACTIONS = {
   'borrar-repetidas': async () => {
     if (!soyAdmin()) { noPuedes(); return; }
     const rep = marcasRepetidas(); if (!rep.length) return;
-    const lista = rep.map((r) => athleteById(r.athleteId).name + ', ' + r.workoutName + ' del ' + fmtDate(r.date) + ' (' + fmtScore(r) + ')').join('; ');
+    const lista = rep.map((r) => athleteById(r.athleteId).name + ', ' + nombreDeMarca(r) + ' del ' + fmtDate(r.date) + ' (' + fmtScore(r) + ')').join('; ');
     if (await confirmSheet('Borrar marcas repetidas', 'Se borrará' + (rep.length === 1 ? '' : 'n') + ' ' + rep.length + ' marca' + (rep.length === 1 ? '' : 's') + ' que no cuenta' + (rep.length === 1 ? '' : 'n') + ' porque ese día hay otra más reciente del mismo entreno: ' + lista + '.')) {
       for (const r of rep) await state.store.remove('results', r.id);
       dismissSheet(); toast('Marcas repetidas borradas'); render();

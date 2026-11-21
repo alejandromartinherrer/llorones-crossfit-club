@@ -55,7 +55,7 @@ async function movil(nombre, port, siembra, yo) {
   await p.eval("go('profile'); return 1;"); await sleep(600);
   check(/1 marca repetida/.test(await p.text()), 'el admin ve el aviso de 1 marca repetida en Administración');
   await p.clickSel('[data-action="borrar-repetidas"]'); await sleep(600);
-  check((await p.sheetTitle()) === 'Borrar marcas repetidas' && /Colega, emom del /.test(await p.eval("return document.querySelector('.sheet-body').textContent")), 'pide confirmación y dice cuál borra');
+  check((await p.sheetTitle()) === 'Borrar marcas repetidas' && /Colega, EMOM T2B del /.test(await p.eval("return document.querySelector('.sheet-body').textContent")), 'pide confirmación y dice cuál borra');
   await p.clickSel('[data-action="confirm-yes"]'); await sleep(900);
   check(await p.eval("return !state.results.some(function(r){return r.id==='e1';}) && state.results.some(function(r){return r.id==='e2';})"), 'borra la de 8 y deja la de 20');
   check(!(/marca repetida/.test(await p.text())), 'y el aviso desaparece');
