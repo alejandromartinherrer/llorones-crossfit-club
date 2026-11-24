@@ -894,6 +894,13 @@ details[open] > summary::after { content: "–"; }
 .musc-movs li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .musc-movs li:first-child { border-top: 0; }
 .musc-movs li span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+/* Datos graciosos */
+.datos-list { display: flex; flex-direction: column; margin-top: 10px; }
+.datos-list li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.datos-list li:first-child { border-top: 0; }
+.datos-list .emo { font-size: 24px; line-height: 1.2; text-align: center; }
+.datos-list b { display: block; font-weight: 600; font-size: 15px; line-height: 1.35; }
+.datos-list div span { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
 .segmented.sm button { padding: 6px 4px; font-size: 13px; }
 
 /* ---------- editar / borrar marcas ---------- */
@@ -972,7 +979,7 @@ details[open] > summary::after { content: "–"; }
    Si GITHUB_SYNC es null la app funciona en modo local.
    ------------------------------------------------------------ */
 const GITHUB_SYNC = { owner: 'alejandromartinherrer', repo: 'llorones-data', branch: 'main', path: 'data/sync.json' };
-const APP_VERSION = '1.13.4';
+const APP_VERSION = '1.14.0';
 /* Quien montó el club manda desde el principio y tiene un nivel más:
    nadie le quita la admin ni le borra. Un segundo admin lo administra con él (v1.11.7): es admin
    de serie y solo quien montó el club puede quitársela (queda `admin: false` en su
@@ -1407,6 +1414,8 @@ const state = {
   rxSearch: '',                    // Mis Rx: filtro del buscador
   muscTab: 'equilibrio',           // Tus músculos: equilibrio | fatiga
   muscPeriodo: '30',               // Tus músculos: semana | 30 | 90 | todo
+  datosTab: 'tu',                  // Datos graciosos: tu | cuadrilla
+  datosPeriodo: 'anio',            // Datos graciosos: mes | anio | todo
   sugDur: leeSugDur(),             // Entrenos sugeridos: minutos que tienes (5-25)
   sugSeed: 0,                      // Entrenos sugeridos: "Otras ideas" cambia la semilla
   versionNueva: '',                // versión publicada más nueva que la que corre, si la hay
@@ -1879,7 +1888,7 @@ function renderTopbar() {
 }
 function renderTabs() {
   $$('#tabbar .tab').forEach((b) => {
-    const active = b.dataset.view === state.view || (state.view === 'wod' && b.dataset.view === 'wods') || (['rx', 'musculos', 'sugeridos'].indexOf(state.view) >= 0 && b.dataset.view === 'profile');
+    const active = b.dataset.view === state.view || (state.view === 'wod' && b.dataset.view === 'wods') || (['rx', 'musculos', 'sugeridos', 'datos'].indexOf(state.view) >= 0 && b.dataset.view === 'profile');
     if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
 }
@@ -2151,7 +2160,8 @@ function viewProfile() {
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="musculos"><div class="section-head"><h2 class="h-display h2">Tus músculos</h2><span class="chev">' + icon('chev') + '</span></div>' +
       '<p class="muted small">Qué has trabajado y qué toca descansar, según los entrenos que has apuntado.</p></button>' +
       '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="sugeridos"><div class="section-head"><h2 class="h-display h2">Entrenos sugeridos</h2><span class="chev">' + icon('chev') + '</span></div>' +
-      '<p class="muted small">' + (function () { const t = gruposQueTocan(estadoMuscular(m)).slice(0, 3); return 'Según tu carga y tu fatiga, para lo que tengas: de 5 a 25 min.' + (t.length ? ' Hoy toca ' + esc(nombresMusc(t)) + '.' : ''); })() + '</p></button>';
+      '<p class="muted small">' + (function () { const t = gruposQueTocan(estadoMuscular(m)).slice(0, 3); return 'Según tu carga y tu fatiga, para lo que tengas: de 5 a 25 min.' + (t.length ? ' Hoy toca ' + esc(nombresMusc(t)) + '.' : ''); })() + '</p></button>' +
+      tarjetaDatos(m);
   } else {
     html += '<section class="card"><span class="eyebrow">Atleta</span><h2 class="h-display h2">¿Quién eres?</h2><p class="muted">Elige tu atleta para que los tiempos que apuntes cuenten para ti.</p></section>';
   }
@@ -2899,6 +2909,255 @@ function viewMusculos() {
   }
   return html + '</section></div>';
 }
+/* ============================================================
+   Datos graciosos: lo que llevas corrido, levantado y saltado,
+   contado con cosas de la vida
+   ============================================================ */
+const PERIODOS_DATOS = { mes: 'Este mes', anio: 'Este año', todo: 'Siempre' };
+const BOX_CM = 60;                     // un box jump sin altura apuntada sube 60 cm (24")
+const PLANTA_M = 3, DOMINADA_M = 0.5, WALLBALL_M = 3, PISTA_M = 400, DONUT_KCAL = 250, PARTIDO_MIN = 90;
+/* Los viajes salen de Zaragoza y van en línea recta. */
+const ORIGEN = ['Zaragoza', 41.6488, -0.8891];
+const DESTINOS = [['Utebo', 41.7139, -0.9958], ['Alagón', 41.7697, -1.1186], ['Huesca', 42.1401, -0.4089], ['Calatayud', 41.3533, -1.6431],
+  ['Tudela', 42.0617, -1.6067], ['Jaca', 42.57, -0.549], ['Lleida', 41.6176, 0.62], ['Soria', 41.764, -2.4688], ['Pamplona', 42.8125, -1.6458],
+  ['Teruel', 40.3456, -1.1065], ['Logroño', 42.4627, -2.445], ['Bilbao', 43.263, -2.935], ['Valencia', 39.4699, -0.3763], ['Barcelona', 41.3874, 2.1686],
+  ['Madrid', 40.4168, -3.7038], ['Toulouse', 43.6047, 1.4442], ['Sevilla', 37.3891, -5.9845], ['Lisboa', 38.7223, -9.1393], ['París', 48.8566, 2.3522],
+  ['Roma', 41.9028, 12.4964], ['Berlín', 52.52, 13.405], ['Moscú', 55.7558, 37.6173], ['Nueva York', 40.7128, -74.006], ['Tokio', 35.6762, 139.6503]];
+/* [kilos, singular, plural, género] */
+const COSAS_PESO = [[4.5, 'gato', 'gatos', 'o'], [80, 'lavadora', 'lavadoras', 'a'], [450, 'piano de cola', 'pianos de cola', 'o'], [1200, 'coche', 'coches', 'o'],
+  [2300, 'rinoceronte', 'rinocerontes', 'o'], [6000, 'elefante africano', 'elefantes africanos', 'o'], [12000, 'autobús', 'autobuses', 'o'],
+  [150000, 'ballena azul', 'ballenas azules', 'a'], [7300000, 'Torre Eiffel', 'Torres Eiffel', 'a']];
+const ALTURAS = [[56, 'la Torre de Pisa'], [96, 'el Big Ben'], [330, 'la Torre Eiffel'], [828, 'el Burj Khalifa'], [2314, 'el Moncayo'],
+  [3404, 'el Aneto'], [4806, 'el Mont Blanc'], [8849, 'el Everest']];
+
+function kmEntre(la1, lo1, la2, lo2) {
+  const r = Math.PI / 180;
+  const a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(a));
+}
+let _destinos = null;
+function destinos() {
+  if (!_destinos) _destinos = DESTINOS.map((x) => ({ nombre: x[0], km: kmEntre(ORIGEN[1], ORIGEN[2], x[1], x[2]) })).sort((a, b) => a.km - b.km);
+  return _destinos;
+}
+/* «60/40» → [60, 40]; «17,5/12,5» → [17.5, 12.5]; «2x24» → [48]; «95/65 lb» → en kilos. Como mucho, las dos primeras. */
+function opcionesCarga(t) {
+  const s = String(t || '').toLowerCase().replace(/(\d),(\d)/g, '$1.$2');
+  const f = /\b(lbs?|pounds?)\b/.test(s) ? 0.4536 : /\bpood\b/.test(s) ? 16 : 1;
+  const doble = s.match(/^\s*(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)/);
+  if (doble) return [Number(doble[1]) * Number(doble[2]) * f];
+  return (s.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((n) => n > 0).slice(0, 2).map((n) => n * f);
+}
+/* De dos cargas («60/40»), la que más se acerque a la tuya de Mis Rx o, sin ella, la primera; si fue escalado, la
+   menor. Sin cargas, la tuya. En la barra, Mis Rx es tu máximo y en un metcon se va a un 60 % de él. */
+const PCT_METCON = 0.6;
+function eligeOpcion(ops, mio, rx, m) {
+  mio = (Number(mio) || 0) * (m && m.cat === 'barra' ? PCT_METCON : 1);
+  if (!ops.length) return mio;
+  if (rx === false) return Math.min(...ops);
+  return mio ? ops.reduce((x, y) => (Math.abs(y - mio) < Math.abs(x - mio) ? y : x)) : ops[0];
+}
+const parteDe = (n, total) => (total > 0 ? Math.min(1, (n || 0) / total) : 0);
+/* La cantidad de una fila en número: «10/10» (con cada lado) son 20; «8-20», la media; lo demás, 0. */
+function numCant(c) {
+  const t = String(c || '').replace(/,/g, '.').trim();
+  let x;
+  if ((x = t.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/))) return Number(x[1]) + Number(x[2]);
+  if ((x = t.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/))) return (Number(x[1]) + Number(x[2])) / 2;
+  return /^\d+(?:\.\d+)?$/.test(t) ? Number(t) : 0;
+}
+/* Lo que pide una vuelta de un entreno: en AMRAP, una ronda; en EMOM y Tabata, un intervalo; en el resto, el
+   entreno entero, con su esquema. Filas {m, n, u, kg, carga, max, linea}: n en reps, metros, calorías o segundos.
+   grupos: los peldaños de una escalera escrita fila a fila («21 A, 21 B, 15 A, 15 B…»), que ya lleva su esquema. */
+const _pasadaMemo = new WeakMap();
+function pasadaDe(w) {
+  if (!(w.modo === 'bloques' && Array.isArray(w.bloques))) {
+    if (_pasadaMemo.has(w)) return _pasadaMemo.get(w);
+    const cargas = String(w.loadM || '').toLowerCase();
+    const filas = lineasTexto(w.description, w.loadM).filter((x) => x.q)
+      .map((x) => ({ m: x.m, n: x.q.n * x.mult, u: x.q.u, kg: x.kg, carga: '', linea: x.linea + ' | ' + cargas }));
+    if (w.category === 'hero' || w.category === 'girl' || w.category === 'prueba') _pasadaMemo.set(w, filas);   // los de serie no cambian
+    return filas;
+  }
+  const esq = String(w.esquema || '').trim();
+  const nums = llevaEsquema(w.type) ? numerosEsquema(esq, w.type) : [];
+  const porX = w.type === 'strength' && /[x×]/.test(esq);                    // 5x5: series por reps
+  const series = porX ? nums[0] || 1 : nums.length > 1 ? nums.length : 0;      // 21-15-9: tres series
+  const repsSerie = porX ? nums.reduce((a, b) => a * b, 1) : nums.length > 1 ? nums.reduce((a, b) => a + b, 0) : 0;
+  const vueltas = !series && nums.length === 1 ? nums[0] : 1;                 // 5: cinco rondas
+  const bloques = w.bloques.filter((b) => b.mov || !/^\s*(rest|descanso)\b/i.test(b.nombre || ''));   // un «Rest» de texto libre no es trabajo
+  const claves = bloques.map((b) => b.mov || String(b.nombre || '').trim().toLowerCase());
+  const distintas = new Set(claves).size;
+  const grupos = claves.length > distintas && claves.length % distintas === 0 ? claves.length / distintas : 1;
+  const out = [];
+  bloques.forEach((b) => {
+    const m = movPorId(b.mov), ud = udDeBloque(b);
+    const deUd = (x) => (x === 'reps' ? 'rep' : x === 'min' ? 's' : x);
+    if (esMax(ud)) { const u0 = udDeMov(m); out.push({ m, n: 0, u: ud === 'maxcal' || u0 === 'cal' ? 'cal' : deUd(u0), kg: 0, carga: String(b.carga || ''), max: true }); return; }
+    const u = !m && ud === 'reps' && /\bcal/i.test(b.nombre || '') ? 'cal' : deUd(ud);     // «20 calories» de texto libre
+    let n = numCant(partesCant(b.cant).n) * (ud === 'min' ? 60 : 1);
+    n = n ? n * (grupos > 1 ? vueltas : series || vueltas) : u === 'rep' ? repsSerie : 0;
+    if (n > 0) out.push({ m, n, u, kg: 0, carga: String(b.carga || '') });
+  });
+  out.grupos = grupos;
+  return out;
+}
+/* Lo que hizo una marca, fila a fila: la vuelta del entreno por las vueltas que salen de la marca. */
+function volumenMarca(r, w) {
+  const filas = pasadaDe(w);
+  if (!filas.length) return [];
+  const repsVuelta = filas.reduce((s, x) => s + (!x.max && (x.u === 'rep' || x.u === 'cal') ? x.n : 0), 0);   // las calorías cuentan como reps en la marca
+  const grupos = filas.grupos || 1, hayMax = filas.some((x) => x.max);
+  const intervalos = w.type === 'emom' ? w.rounds || 0 : w.type === 'tabata' ? w.rounds || 8 : 0;
+  let f;
+  if (intervalos) {
+    /* En cada intervalo se hace la vuelta entera o, si no cabe, una fila (se rota por estaciones) o un peldaño. */
+    const intervalo = w.type === 'emom' ? w.intervalSec || 60 : (w.workSec || 20) + (w.restSec == null ? 10 : w.restSec);
+    const seg = filas.reduce((s, x) => s + (x.max ? 0 : segundosLinea({ m: x.m, q: { n: x.n, u: x.u }, kg: x.kg })), 0);
+    const porIntervalo = grupos > 1 ? grupos : seg > intervalo * 1.5 && filas.length > 1 ? filas.length : 1;
+    let hechos = intervalos;
+    if (r.scoreType === 'rounds') hechos = (r.rounds || 0) + parteDe(r.reps, repsVuelta / porIntervalo);
+    else if (r.scoreType === 'reps' && !hayMax) hechos = (r.reps || 0) > intervalos ? null : r.reps || 0;   // «8» en un EMOM de 10: los intervalos hechos
+    f = hechos == null ? (repsVuelta ? r.reps / repsVuelta : 0) : hechos / porIntervalo;
+  } else if (r.scoreType === 'rounds') f = ((r.rounds || 0) + parteDe(r.reps, repsVuelta / grupos)) / grupos;
+  else if (r.scoreType === 'time') f = r.finished === false ? parteDe(r.reps, repsVuelta) : 1;
+  else if (r.scoreType === 'reps' && !hayMax) f = repsVuelta ? (r.reps || 0) / repsVuelta : 0;
+  else if (r.scoreType === 'distance' && !hayMax) { const mv = filas.reduce((s, x) => s + (x.u === 'm' ? x.n : 0), 0); f = mv ? (r.meters || 0) / mv : 1; }
+  else f = 1;
+  const toca = (x) => x.max && (r.scoreType === 'reps' ? x.u !== 'm' : r.scoreType === 'distance' ? x.u === 'm' : false);
+  const maximos = filas.filter(toca).length;
+  const total = r.scoreType === 'reps' ? r.reps || 0 : r.scoreType === 'distance' ? r.meters || 0 : 0;
+  return filas.map((x) => Object.assign({}, x, { n: x.max ? (toca(x) ? total / maximos : 0) : x.n * f })).filter((x) => x.n > 0);
+}
+/* Kilos de cada repetición: los de la marca si se puntúa por kilos; si no, los del entreno o los de Mis Rx. */
+function kgFila(x, r, a) {
+  if (!x.m || x.m.tipo !== 'kg' || x.u !== 'rep') return 0;
+  if (r.scoreType === 'load') return r.load || 0;
+  if (x.kg) return x.kg;
+  return eligeOpcion(opcionesCarga(x.carga), (misRx(a)[x.m.id] || {}).kg, r.rx, x.m);
+}
+/* Metros que sube un box jump: la altura del entreno, la de Mis Rx o 60 cm. */
+function alturaSalto(x, r, a) {
+  let cm = eligeOpcion(opcionesCarga(x.carga), (misRx(a)[x.m.id] || {}).cm, r.rx, x.m);
+  if (!cm && x.linea) { const p = x.linea.match(/(\d+)(?:\s*\/\s*\d+)?\s*-?\s*(?:inch(?:es)?|in)\b/); if (p) cm = Number(p[1]) * 2.54; }
+  return (cm || BOX_CM) / 100;
+}
+/* Lo que duró una marca: el tiempo apuntado o lo que suele llevar el entreno, sin pasar de lo que dura un EMOM o
+   un AMRAP, del time cap ni de tres horas (un «14:00:00» por un 14:00 no son catorce horas). */
+function segundosMarca(r, w, medianas) {
+  const fijo = w.type === 'emom' && w.intervalSec && w.rounds ? w.intervalSec * w.rounds : w.type === 'amrap' && w.durationMin ? w.durationMin * 60 : 0;
+  let s = r.scoreType === 'time' && r.finished !== false && r.seconds > 0 ? r.seconds : 0;
+  if (!s) { const e = estimaMin(w, medianas); s = fijo || (e ? e.min * 60 : 0); }
+  return Math.min(s, fijo || (w.timeCapMin ? w.timeCapMin * 60 : 3 * 3600));
+}
+function desdeDatos(per) { const h = todayISO(); return per === 'mes' ? h.slice(0, 8) + '01' : per === 'anio' ? h.slice(0, 5) + '01-01' : ''; }
+/* Las cuentas de unos atletas desde una fecha, con sus marcas válidas y sin las repetidas. */
+function datosDe(ids, desde) {
+  const d = { marcas: 0, seg: 0, run: 0, maquinaM: 0, cal: 0, aguante: 0, kg: 0, saltoM: 0, reps: {} };
+  const quien = {};
+  ids.forEach((id) => { quien[id] = athleteById(id) || { id }; });
+  const medianas = medianasClub();
+  state.results.forEach((r) => {
+    if (!quien[r.athleteId] || (desde && r.date < desde) || !marcaValida(r) || esRepetida(r)) return;
+    const w = getWorkout(r.workoutId); if (!w) return;
+    const a = quien[r.athleteId];
+    d.marcas++;
+    d.seg += segundosMarca(r, w, medianas);
+    volumenMarca(r, w).forEach((x) => {
+      if (x.u === 'm') { if (x.m && x.m.id === 'run') d.run += x.n; else if (x.m && /^(row|bike|ski)$/.test(x.m.id)) d.maquinaM += x.n; return; }
+      if (x.u === 'cal') { d.cal += x.n; return; }
+      if (x.u === 's') { d.aguante += x.n; return; }
+      if (!x.m || x.u !== 'rep') return;
+      d.reps[x.m.id] = (d.reps[x.m.id] || 0) + x.n;
+      d.kg += x.n * kgFila(x, r, a);
+      if (/^box-jump/.test(x.m.id)) d.saltoM += x.n * alturaSalto(x, r, a);
+    });
+  });
+  return d;
+}
+const _fmtEntero = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+const fmtEntero = (n) => _fmtEntero.format(Math.round(n));
+const fmtCuantos = (n) => (n < 10 ? String(Math.round(n * 10) / 10).replace('.', ',') : fmtEntero(n));
+const fmtKm = (km) => fmtCuantos(km) + ' km';            // espacio duro: «1108 km» no se parte
+const fmtAltura = (m) => (m < 1000 ? fmtEntero(m) + ' m' : fmtKm(m / 1000));
+function fmtDuracion(seg) {
+  const min = Math.round(seg / 60), h = Math.floor(min / 60);
+  return h ? h + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : '') : min + ' min';
+}
+/* «un edificio de 12 plantas» o «1,2 veces la Torre Eiffel (330 m)». */
+function alturaComo(m) {
+  const c = ALTURAS.filter((x) => m >= x[0]).pop();
+  if (!c) return 'un edificio de ' + Math.max(1, Math.round(m / PLANTA_M)) + ' planta' + (Math.round(m / PLANTA_M) > 1 ? 's' : '');
+  const n = m / c[0];
+  return (n < 1.15 ? 'más que ' : fmtCuantos(n) + ' veces ') + c[1] + ' (' + fmtEntero(c[0]) + ' m)';
+}
+/* Las frases, de la más gorda a la más tonta. tu: «has»; si no, «habéis». */
+function frasesDatos(d, tu) {
+  const V = (a, b) => (tu ? a : b);
+  const out = [];
+  const suma = (re) => Object.keys(d.reps).filter((id) => re.test(id)).reduce((s, id) => s + d.reps[id], 0);
+  const ya = (n) => Math.round(n) >= 1;
+  if (d.run >= 100) {
+    const km = d.run / 1000, lista = destinos();
+    const hecho = lista.filter((x) => x.km <= km).pop(), sig = lista.find((x) => x.km > km);
+    const roma = lista.find((x) => x.nombre === 'Roma');
+    out.push({ emo: '🏃', t: V('Has corrido ', 'Habéis corrido ') + fmtKm(km) + ': ' + (hecho ? 'más que de ' + ORIGEN[0] + ' a ' + hecho.nombre + ' (' + fmtKm(hecho.km) + ' en línea recta).' : fmtCuantos(d.run / PISTA_M) + ' vueltas a una pista de atletismo.'),
+      s: sig ? V('Te faltan ', 'Os faltan ') + fmtKm(sig.km - km) + ' para llegar a ' + sig.nombre + '.' + (roma && sig !== roma && km < roma.km ? ' Hasta Roma, ' + fmtKm(roma.km - km) + '.' : '') : 'Da para cruzar medio mundo.' });
+  }
+  if (ya(d.kg)) {
+    const c = COSAS_PESO.filter((x) => d.kg >= x[0]).pop() || COSAS_PESO[0];
+    const n = d.kg / c[0], art = c[3] === 'a' ? 'una ' : 'un ', el = c[3] === 'a' ? 'la ' : 'el ';
+    out.push({ emo: '🏋️', t: V('Has levantado ', 'Habéis levantado ') + fmtEntero(d.kg) + ' kg: ' + (n < 1 ? 'casi lo que pesa ' + art + c[1] : n < 1.15 ? 'lo que pesa ' + art + c[1] : 'lo que pesan ' + fmtCuantos(n) + ' ' + c[2]) + '.',
+      s: 'A ' + fmtEntero(c[0]) + ' kg ' + el + c[1] + '.' + (c[0] > 6000 ? ' O ' + fmtCuantos(d.kg / 6000) + ' elefantes africanos.' : '') });
+  }
+  const box = suma(/^box-jump/);
+  if (ya(box)) out.push({ emo: '📦', t: fmtEntero(box) + ' box jumps: ' + V('has subido ', 'habéis subido ') + fmtAltura(d.saltoM) + ', ' + alturaComo(d.saltoM) + '.', s: d.saltoM >= ALTURAS[0][0] ? 'Un edificio de ' + fmtEntero(d.saltoM / PLANTA_M) + ' plantas.' : '' });
+  const burpees = suma(/burpee|burroll/);
+  if (ya(burpees)) out.push({ emo: '🔥', t: fmtEntero(burpees) + ' burpees: ' + V('te has tirado al suelo ', 'os habéis tirado al suelo ') + fmtEntero(burpees) + ' veces, y ' + V('te has levantado', 'os habéis levantado') + ' todas.', s: '' });
+  const wb = d.reps['wall-ball'] || 0;
+  if (ya(wb)) out.push({ emo: '🏀', t: fmtEntero(wb) + ' wall balls: ' + V('has lanzado ', 'habéis lanzado ') + 'el balón ' + fmtAltura(wb * WALLBALL_M) + ' hacia arriba, ' + alturaComo(wb * WALLBALL_M) + '.', s: 'A 3 m la diana.' });
+  const dom = suma(/pull-up|muscle-up|^c2b$|chin-up/);
+  if (ya(dom)) out.push({ emo: '🧗', t: fmtEntero(dom) + ' dominadas: ' + V('has subido tu cuerpo ', 'habéis subido el cuerpo ') + fmtAltura(dom * DOMINADA_M) + ', ' + alturaComo(dom * DOMINADA_M) + '.', s: 'Medio metro cada una.' });
+  const flex = suma(/push-up/);
+  if (ya(flex)) out.push({ emo: '💪', t: fmtEntero(flex) + ' flexiones: ' + V('has empujado ', 'habéis empujado ') + 'el suelo ' + fmtEntero(flex) + ' veces, y sigue en su sitio.', s: '' });
+  const sent = suma(/squat|thruster|wall-ball|pistol|cluster/);
+  if (ya(sent)) out.push({ emo: '🪑', t: fmtEntero(sent) + ' sentadillas: ' + V('te has sentado ', 'os habéis sentado ') + fmtEntero(sent) + ' veces sin silla.', s: 'Cuentan también las de barra, los thrusters y los wall balls.' });
+  const t2b = suma(/t2b/);
+  if (ya(t2b)) out.push({ emo: '🦶', t: fmtEntero(t2b) + ' toes-to-bar: ' + V('has llevado ', 'habéis llevado ') + 'los pies a la barra ' + fmtEntero(t2b) + ' veces.', s: '' });
+  const comba = suma(/-under$/);
+  if (ya(comba)) out.push({ emo: '🪢', t: fmtEntero(comba) + ' saltos a la comba, dobles incluidos.', s: '' });
+  if (ya(d.cal)) out.push({ emo: '🍩', t: fmtEntero(d.cal) + ' calorías en el remo, la bici o el SkiErg: ' + fmtCuantos(d.cal / DONUT_KCAL) + ' dónuts.', s: 'A ' + DONUT_KCAL + ' kcal el dónut.' + (d.maquinaM >= 100 ? ' Y ' + fmtKm(d.maquinaM / 1000) + ' en máquina.' : '') });
+  else if (d.maquinaM >= 100) out.push({ emo: '🚣', t: fmtKm(d.maquinaM / 1000) + ' en el remo, la bici o el SkiErg.', s: '' });
+  if (d.aguante >= 60) out.push({ emo: '⏱️', t: fmtDuracion(d.aguante) + ' sin moverte: en plancha, colgado de la barra o con el peso arriba.', s: '' });
+  if (d.seg >= 600) out.push({ emo: '⚽', t: fmtDuracion(d.seg) + ' sudando: ' + fmtCuantos(d.seg / 60 / PARTIDO_MIN) + ' partidos de fútbol.', s: 'El tiempo apuntado o, si no, lo que suele durar cada entreno.' });
+  return out;
+}
+/* La tarjeta de Perfil, con el primer dato del año. */
+function tarjetaDatos(m) {
+  const f = frasesDatos(datosDe([m.id], desdeDatos('anio')), true)[0];
+  const txt = !f ? 'Lo que llevas corrido, levantado y saltado, contado con cosas de la vida.' : /^\d/.test(f.t) ? 'Este año, ' + f.t : 'Este año ' + f.t.charAt(0).toLowerCase() + f.t.slice(1);
+  return '<button class="card" style="text-align:left;cursor:pointer" data-action="go" data-view="datos"><div class="section-head"><h2 class="h-display h2">Datos graciosos</h2><span class="chev">' + icon('chev') + '</span></div>' +
+    '<p class="muted small">' + esc(txt) + '</p></button>';
+}
+/* --- DATOS GRACIOSOS --- */
+function viewDatos() {
+  const m = me();
+  if (!m) return '<div class="view"><div class="empty"><span class="h-display h2">¿Quién eres?</span><span>Elige tu atleta para ver tus datos.</span><button class="btn primary" data-action="pick-athlete">Elegir atleta</button></div></div>';
+  const tab = state.datosTab === 'cuadrilla' ? 'cuadrilla' : 'tu', tu = tab === 'tu';
+  const per = PERIODOS_DATOS[state.datosPeriodo] ? state.datosPeriodo : 'anio';
+  const d = datosDe(tu ? [m.id] : state.athletes.map((a) => a.id), desdeDatos(per));
+  const frases = frasesDatos(d, tu);
+  return '<div class="view">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn ghost sm" data-action="go" data-view="profile">' + icon('back') + 'Perfil</button><span class="eyebrow">' + d.marcas + ' entreno' + (d.marcas === 1 ? '' : 's') + '</span></div>' +
+    '<section class="card"><span class="eyebrow">' + esc(tu ? m.name : 'La cuadrilla') + '</span><h1 class="h-display h2">Datos graciosos</h1>' +
+    '<div class="segmented" role="tablist">' + [['tu', 'Tú'], ['cuadrilla', 'La cuadrilla']].map((x) => '<button role="tab" data-action="datos-tab" data-tab="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + x[1] + '</button>').join('') + '</div>' +
+    '<div class="segmented sm" style="margin-top:10px">' + Object.keys(PERIODOS_DATOS).map((k) => '<button data-action="datos-periodo" data-periodo="' + k + '" aria-pressed="' + (per === k) + '">' + PERIODOS_DATOS[k] + '</button>').join('') + '</div>' +
+    (frases.length ? '<ul class="datos-list">' + frases.map((f) => '<li><span class="emo" aria-hidden="true">' + f.emo + '</span><div><b>' + esc(f.t) + '</b>' + (f.s ? '<span>' + esc(f.s) + '</span>' : '') + '</div></li>').join('') + '</ul>'
+      : '<p class="muted" style="margin-top:12px">' + (d.marcas ? 'Con lo apuntado en este periodo no sale nada que contar.' : 'Sin entrenos apuntados en este periodo.') + '</p>') +
+    '<p class="faint small" style="margin-top:12px">Cuentas aproximadas con ' + (tu ? 'tus marcas' : 'las marcas de todos') + ': un AMRAP suma las rondas apuntadas; un For time, el entreno entero, y un EMOM, todos sus minutos (sin pasar de lo que cabe en cada uno). ' +
+    'Los kilos son los de la marca, los del entreno o, si no los dice, los de Mis Rx (en la barra, el 60 %); lo que va sin kilos no suma. Un box jump sube 60 cm si no se dice otra cosa, una dominada medio metro y un wall ball 3 m. Las distancias, desde Zaragoza en línea recta.</p>' +
+    '</section></div>';
+}
 
 /* ============================================================
    Entrenos sugeridos: cuánto dura cada entreno, cómo tienes cada
@@ -2937,7 +3196,8 @@ function kgDe(t) {
   const n = Number(x[1]);
   return x[2] === 'kg' ? n : x[2] === 'pood' ? n * 16 : n * 0.4536;
 }
-function kgPesoCorporal(t) { const x = String(t || '').match(/(\d+(?:\.\d+)?)?\s*[×x]?\s*bodyweight/); return x ? (Number(x[1]) || 1) * 75 : 0; }
+/* «bodyweight» son 75 kg y «1.5 times bodyweight», vez y media; el número sin «×» ni «times» son reps («100 bodyweight deadlifts»). */
+function kgPesoCorporal(t) { const x = String(t || '').match(/(?:(\d*\.?\d+)\s*(?:[×x]|times)\s*)?bodyweight/); const n = x && Number(x[1]); return x ? (n > 0 && n <= 3 ? n : 1) * 75 : 0; }
 /* La carga de un movimiento según las cargas de un héroe: "53-lb kettlebell, 95-lb barbell, 24-inch box", "225-lb cleans". */
 function cargaDeTexto(t, m) {
   if (!t || !m) return 0;
@@ -2993,18 +3253,20 @@ function movEnLinea(b, cands) {
   });
   return mejor;
 }
-/* Segundos que lleva un entreno escrito (el de un héroe, una girl o uno nuestro). */
-function estimaTexto(desc, cargas) {
+/* Lo que pide un entreno escrito (el de un héroe, una girl o uno nuestro), línea a línea: {m, q: {n, u}, kg, mult,
+   linea} por cada movimiento con su cantidad, y {descanso: s} por cada descanso. kg, solo en las de repeticiones. */
+function lineasTexto(desc, cargas) {
   const texto = String(desc || '');
   const bajo = sinGuiones(texto);
   const cands = MOVIMIENTOS.filter((m) => m.mu && m.mu.length && [m.nombre].concat(m.en).some((a) => bajo.indexOf(sinGuiones(a)) >= 0));
-  let mult = 1, esquema = 0, seg = 0, cargaNota = 0;
+  let mult = 1, esquema = 0, cargaNota = 0;
+  const out = [];
   texto.split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
     let b = l.toLowerCase().replace(/[“”"]/g, '').replace(/(\d),(\d{3})\b/g, '$1$2').replace(/(\d),(\d{1,2})\b/g, '$1.$2');
     if (/^rx\b/.test(b)) { cargaNota = kgDe(b) || cargaNota; return; }
     if (/^then\b/.test(b)) { mult = 1; esquema = 0; b = b.replace(/^then\b[,:]?\s*/, ''); if (!b) return; }
     let x;
-    if ((x = b.match(/\brest\b\D*(\d+)\s*(minutes?|mins?|seconds?|secs?)/))) { const s = Number(x[1]) * (/min/.test(x[2]) ? 60 : 1); seg += /between/.test(b) ? s * Math.max(0, mult - 1) : s * mult; return; }
+    if ((x = b.match(/\brest\b\D*(\d+)\s*(minutes?|mins?|seconds?|secs?)/))) { const s = Number(x[1]) * (/min/.test(x[2]) ? 60 : 1); out.push({ descanso: /between/.test(b) ? s * Math.max(0, mult - 1) : s * mult }); return; }
     if ((x = b.match(/^(\d+(?:\s*-\s*\d+)+)\b/)) && (/:$/.test(b) || /\b(reps?|for time|of)\b/.test(b))) { esquema = x[1].split('-').reduce((s, n) => s + Number(n), 0); mult = 1; return; }
     if ((x = b.match(/\b(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+rounds?\b/)) && (/:$/.test(b) || /rounds?,? (each )?(for time|of)\b/.test(b))) { mult = numeroTexto(x[1]); esquema = 0; return; }
     if (/:$/.test(b)) return;
@@ -3013,12 +3275,25 @@ function estimaTexto(desc, cargas) {
     let q = cantidadLinea(b);
     if ((!q || (q.u === 'rep' && !/^\d/.test(b))) && esquema) q = { n: esquema, u: 'rep' };
     if (!q) return;
-    let s;
-    if (q.u === 'm') s = q.n * (SPM[m.id] || 1.5) * (m.id === 'run' && q.n > 1600 ? 1 + (q.n - 1600) / 8000 : 1);
-    else if (q.u === 'cal') s = q.n * (SPC[m.id] || 4.4);
-    else if (q.u === 's') s = q.n;
-    else s = q.n * sprDe(m) * factorCarga(m, kgDe(b) || kgPesoCorporal(b) || cargaDeTexto(cargas, m) || (m.cat === 'barra' ? cargaNota : 0)) * factorVolumen(q.n);
-    seg += (s + clamp(s * 0.25, 1, 8)) * mult;          // más el cambio de un movimiento a otro
+    out.push({ m, q, mult, linea: b, kg: q.u === 'rep' ? kgDe(b) || kgPesoCorporal(b) || cargaDeTexto(cargas, m) || (m.cat === 'barra' ? cargaNota : 0) : 0 });
+  });
+  return out;
+}
+/* Segundos de una línea, sin el cambio al siguiente movimiento. m puede faltar (una fila de texto libre). */
+function segundosLinea(x) {
+  const m = x.m || {}, q = x.q;
+  if (q.u === 'm') return q.n * (SPM[m.id] || 1.5) * (m.id === 'run' && q.n > 1600 ? 1 + (q.n - 1600) / 8000 : 1);
+  if (q.u === 'cal') return q.n * (SPC[m.id] || 4.4);
+  if (q.u === 's') return q.n;
+  return q.n * sprDe(m) * factorCarga(m, x.kg) * factorVolumen(q.n);
+}
+/* Segundos que lleva un entreno escrito. */
+function estimaTexto(desc, cargas) {
+  let seg = 0;
+  lineasTexto(desc, cargas).forEach((x) => {
+    if (x.descanso != null) { seg += x.descanso; return; }
+    const s = segundosLinea(x);
+    seg += (s + clamp(s * 0.25, 1, 8)) * x.mult;          // más el cambio de un movimiento a otro
   });
   return seg;
 }
@@ -3913,7 +4188,7 @@ function render() {
   renderizando = true;
   try {
     renderTopbar(); renderTabs();
-    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos, sugeridos: viewSugeridos };
+    const views = { home: viewHome, wods: viewWods, wod: viewWod, timer: viewTimer, ranking: viewRanking, profile: viewProfile, rx: viewRx, musculos: viewMusculos, sugeridos: viewSugeridos, datos: viewDatos };
     $('#main').innerHTML = avisoVersion() + (views[state.view] || viewHome)();
     afterRenderTimer();
     if (state.view === 'rx' && state.rxSearch) aplicaFiltroRx();
@@ -4136,6 +4411,8 @@ const ACTIONS = {
   },
   'musc-tab': (el) => { state.muscTab = el.dataset.tab; render(); },
   'musc-periodo': (el) => { state.muscPeriodo = el.dataset.periodo; render(); },
+  'datos-tab': (el) => { state.datosTab = el.dataset.tab; render(); },
+  'datos-periodo': (el) => { state.datosPeriodo = el.dataset.periodo; render(); },
   'rx-pct': (el) => fijaPct(Number(el.dataset.v) || 100),
   'rx-pct-input': (el) => { const v = Math.round(Number(el.value)); if (v >= 1 && v <= 200) fijaPct(v); else if (!el.value) fijaPct(100); else el.value = ''; },
   'rx-num': async (el) => {
