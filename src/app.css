@@ -879,6 +879,13 @@ details[open] > summary::after { content: "–"; }
 .musc-movs li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .musc-movs li:first-child { border-top: 0; }
 .musc-movs li span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+/* Datos graciosos */
+.datos-list { display: flex; flex-direction: column; margin-top: 10px; }
+.datos-list li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.datos-list li:first-child { border-top: 0; }
+.datos-list .emo { font-size: 24px; line-height: 1.2; text-align: center; }
+.datos-list b { display: block; font-weight: 600; font-size: 15px; line-height: 1.35; }
+.datos-list div span { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
 .segmented.sm button { padding: 6px 4px; font-size: 13px; }
 
 /* ---------- editar / borrar marcas ---------- */
